@@ -21,3 +21,20 @@ Permitted run-time analytical inputs are current user screenshots and fresh deep
 
 ## No live-feed dependency
 EDGE is snapshot/run-on-command based. It does not claim knowledge of market changes between verified observations.
+
+## EDGE Efficacy Engine V2 (approved 10 Sep 2026)
+
+Every `EDGE <STOCK>` run is now a closed-loop assessment plus a new recommendation.
+The mandatory visible order is:
+
+1. EDGE Master Assessment across all tracked stocks.
+2. Active Calls summary, one row per stock (latest call plus count of open calls).
+3. Current Stock Outcome for the requested ticker.
+4. Current Stock Drill-down.
+
+Every new recommendation is immutable and has a maximum horizon of five trading days.
+It is independently tracked until target, stop, explicit manual closure, or D+5 final evaluation.
+All surviving recommendations are assessed on every later EDGE run when data is available.
+Historical pre-V2 recommendations are never rewritten and may be excluded from V2 master metrics if their original horizon exceeds five days.
+
+Efficacy is separated into forecast/recommendation accuracy, opportunity quality (MFE/MAE), model P/L, and actual-user P/L when the user confirms an executed trade. A standardized model-capital ledger is used for comparability, while `model_portfolio_positions` prevents more than one simultaneous simulated position per ticker so overlapping recommendations cannot artificially multiply portfolio exposure.

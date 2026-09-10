@@ -39,3 +39,7 @@ Never commit:
 Model: EDGE V1  
 Database schema: v1  
 Status: Phase-13 implementation/validation
+
+### Efficacy Engine V2
+
+The approved V2 efficacy layer adds mandatory portfolio-first assessment on every run, D+1 through D+5 recommendation tracking, MFE/MAE, hit-rate and target-rate metrics, standardized model P/L, and a deduplicated per-ticker model portfolio. See `migrations/003_edge_efficacy_v2.sql` and `src/efficacy.py`.

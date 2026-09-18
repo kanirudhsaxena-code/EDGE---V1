@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
+import re
 import time
 from typing import Any, Mapping, Optional, Protocol, Sequence
 from urllib.error import HTTPError, URLError
@@ -50,6 +51,36 @@ def safe_diagnostic(error: Exception) -> str:
             return raw
         return "ACQUISITION_FAILED"
     return "ACQUISITION_FAILED"
+
+
+def _upstox_error_code(exc: HTTPError) -> str:
+    try:
+        raw = exc.read(65536)
+        payload = json.loads(raw)
+        candidates = []
+        if isinstance(payload, dict):
+            candidates.extend([
+                payload.get("errorCode"),
+                payload.get("error_code"),
+                payload.get("code"),
+            ])
+            errors = payload.get("errors")
+            if isinstance(errors, list):
+                for item in errors:
+                    if isinstance(item, dict):
+                        candidates.extend([
+                            item.get("errorCode"),
+                            item.get("error_code"),
+                            item.get("code"),
+                        ])
+        for value in candidates:
+            if value:
+                cleaned = re.sub(r"[^A-Za-z0-9_-]", "", str(value))[:64]
+                if cleaned:
+                    return cleaned
+    except Exception:
+        pass
+    return "NO_CODE"
 
 
 def _stage_label(path: str) -> str:
@@ -175,7 +206,7 @@ class UpstoxReadOnlyStockProvider:
                 )
             except HTTPError as exc:
                 if exc.code in (401, 403):
-                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}_{_upstox_error_code(exc)}") from None
                 last_error = exc
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
                     raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None

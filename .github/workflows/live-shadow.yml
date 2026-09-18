@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# quote-header validation rerun
+# error-code diagnostic rerun
 
 on:
   workflow_dispatch:

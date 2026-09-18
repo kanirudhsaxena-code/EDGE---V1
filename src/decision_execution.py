@@ -57,7 +57,14 @@ def execution_quality_from_rr(rr: Optional[float]) -> tuple[str, int]:
     return ("POOR", 45)
 
 
-def _ladder(bot_grade: str, mt: float, execution_quality_score: float) -> str:
+def _ladder(
+    bot_grade: str,
+    mt: float,
+    execution_quality_score: float,
+    *,
+    directional_actionable: bool,
+    rr: Optional[float],
+) -> str:
     grade = bot_grade.strip().upper()
     if grade not in {"C","B","A","A+","A++"}:
         raise ValueError("invalid BOT grade")
@@ -69,37 +76,44 @@ def _ladder(bot_grade: str, mt: float, execution_quality_score: float) -> str:
     if grade == "C":
         return "WATCHLIST" if mt >= 40 else "OBSERVE"
 
+    executable_direction = (
+        directional_actionable
+        and rr is not None
+        and rr >= 1.2
+        and execution_quality_score >= 60
+    )
+
     if grade == "B":
         if mt < 40:
             return "WATCHLIST"
         if mt < 55:
             return "WATCHLIST"
-        if execution_quality_score >= 60:
+        if executable_direction:
             return "PILOT"
         return "INVESTIGATION"
 
     if grade == "A":
-        if mt >= 70 and execution_quality_score >= 60:
+        if executable_direction and mt >= 70:
             return "PARTIAL"
-        if mt >= 55 and execution_quality_score >= 60:
+        if executable_direction and mt >= 55:
             return "PILOT"
         return "INVESTIGATION"
 
     if grade == "A+":
-        if mt >= 70 and execution_quality_score >= 75:
+        if executable_direction and mt >= 70 and execution_quality_score >= 75:
             return "FULL"
-        if mt >= 70:
+        if executable_direction and mt >= 70:
             return "PARTIAL"
-        if mt >= 55 and execution_quality_score >= 60:
+        if executable_direction and mt >= 55:
             return "PILOT"
         return "INVESTIGATION"
 
     # A++
-    if mt >= 85 and execution_quality_score >= 75:
+    if executable_direction and mt >= 85 and execution_quality_score >= 75:
         return "FULL"
-    if mt >= 70 and execution_quality_score >= 60:
+    if executable_direction and mt >= 70:
         return "PARTIAL"
-    if mt >= 55 and execution_quality_score >= 60:
+    if executable_direction and mt >= 55:
         return "PILOT"
     return "INVESTIGATION"
 
@@ -170,7 +184,12 @@ def decide_action(
         raise ValueError("invalid override")
 
     rr_level,_=execution_quality_from_rr(rr)
-    ladder=_ladder(bot_grade,market_trust,execution_quality_score)
+    directional_actionable = f in {"BULLISH","BEARISH"}
+    ladder=_ladder(
+        bot_grade,market_trust,execution_quality_score,
+        directional_actionable=directional_actionable,
+        rr=rr,
+    )
     risk=risk_unit_for_ladder(ladder)
 
     # Hard gates dominate the action branch.

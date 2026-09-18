@@ -52,3 +52,24 @@ def test_invalid_payload_fails_closed():
         assert "list" in str(exc)
     else:
         raise AssertionError("invalid provider payload must fail")
+
+
+class HolidayEnv:
+    def __init__(self,payload):
+        self.payload=payload
+
+class HolidayProvider:
+    def __init__(self,payload):
+        self.payload=payload
+    def market_holidays(self):
+        return HolidayEnv(self.payload)
+
+def test_is_nse_trading_day_skips_weekend_and_trading_holiday():
+    from src.trading_calendar import is_nse_trading_day
+    payload={"status":"success","data":[
+        {"date":"2026-10-02","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["NSE"]}
+    ]}
+    p=HolidayProvider(payload)
+    assert is_nse_trading_day(p,date(2026,10,2)) is False
+    assert is_nse_trading_day(p,date(2026,10,3)) is False
+    assert is_nse_trading_day(p,date(2026,10,5)) is True

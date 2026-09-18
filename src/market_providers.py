@@ -43,8 +43,33 @@ def safe_diagnostic(error: Exception) -> str:
         "OPTION_CHAIN_UNAVAILABLE": "OPTION_CHAIN_UNAVAILABLE",
     }
     if isinstance(error, AcquisitionError):
-        return known.get(str(error), "ACQUISITION_FAILED")
+        raw = str(error)
+        if raw in known:
+            return known[raw]
+        if raw.startswith(("HTTP_", "NETWORK_", "SCHEMA_", "JSON_")):
+            return raw
+        return "ACQUISITION_FAILED"
     return "ACQUISITION_FAILED"
+
+
+def _stage_label(path: str) -> str:
+    if path == "/v2/instruments/search":
+        return "INSTRUMENT_SEARCH"
+    if path == "/v2/market-quote/quotes":
+        return "MARKET_QUOTE"
+    if path == "/v2/option/contract":
+        return "OPTION_CONTRACT"
+    if path == "/v2/option/chain":
+        return "OPTION_CHAIN"
+    if path.startswith("/v3/historical-candle/intraday/"):
+        return "INTRADAY_CANDLE"
+    if path.startswith("/v3/historical-candle/"):
+        return "HISTORICAL_CANDLE"
+    if path.startswith("/v2/fundamentals/"):
+        return "FUNDAMENTALS"
+    if path == "/v2/news":
+        return "NEWS"
+    return "UPSTOX"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -134,10 +159,10 @@ class UpstoxReadOnlyStockProvider:
                     raw = response.read(8_000_001)
                     final_url = response.geturl()
                 if final_url != url or len(raw) > 8_000_000 or not raw:
-                    raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+                    raise AcquisitionError(f"SCHEMA_{_stage_label(path)}")
                 payload = json.loads(raw)
                 if not isinstance(payload, dict) or payload.get("status") != "success":
-                    raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+                    raise AcquisitionError(f"SCHEMA_{_stage_label(path)}")
                 received = datetime.now(timezone.utc)
                 digest = hashlib.sha256(raw).hexdigest()
                 return ProviderEnvelope(
@@ -149,19 +174,19 @@ class UpstoxReadOnlyStockProvider:
                 )
             except HTTPError as exc:
                 if exc.code in (401, 403):
-                    raise AcquisitionError("AUTH_REJECTED") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
                 last_error = exc
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                    raise AcquisitionError("NETWORK_FAILED") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
                 self._sleep(2 ** (attempt + 1))
             except (URLError, TimeoutError, OSError) as exc:
                 last_error = exc
                 if attempt == 2:
-                    raise AcquisitionError("NETWORK_FAILED") from None
+                    raise AcquisitionError(f"NETWORK_{_stage_label(path)}") from None
                 self._sleep(2 ** (attempt + 1))
             except (ValueError, UnicodeError):
-                raise AcquisitionError("INVALID_JSON") from None
-        raise AcquisitionError("NETWORK_FAILED") from last_error
+                raise AcquisitionError(f"JSON_{_stage_label(path)}") from None
+        raise AcquisitionError(f"NETWORK_{_stage_label(path)}") from last_error
 
     def resolve_nse_equity(self, ticker: str) -> tuple[str, str]:
         symbol = ticker.strip().upper()

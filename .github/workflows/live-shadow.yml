@@ -1,4 +1,5 @@
 name: EDGE Live Shadow
+# one-shot diagnostic rerun
 
 on:
   workflow_dispatch:

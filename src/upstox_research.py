@@ -145,6 +145,14 @@ class UpstoxReadOnlyResearchProvider:
             f"/v2/fundamentals/{isin}/income-statement",
             {"type": "consolidated", "time_period": "quarterly"},
         )
+        balance = self._get(
+            f"/v2/fundamentals/{isin}/balance-sheet",
+            {"type": "consolidated"},
+        )
+        cashflow = self._get(
+            f"/v2/fundamentals/{isin}/cash-flow",
+            {"type": "consolidated"},
+        )
         holdings = self._get(f"/v2/fundamentals/{isin}/share-holdings")
         ratios = self._get(f"/v2/fundamentals/{isin}/key-ratios")
         actions = self._get(f"/v2/fundamentals/{isin}/corporate-actions")
@@ -153,11 +161,11 @@ class UpstoxReadOnlyResearchProvider:
 
         payloads = {
             env.source_ref: env.payload
-            for env in (news, profile, income, holdings, ratios, actions, vix, brent)
+            for env in (news, profile, income, balance, cashflow, holdings, ratios, actions, vix, brent)
         }
 
         news_ref = news.source_ref
-        fundamental_ref = "|".join([profile.source_ref, income.source_ref])
+        fundamental_ref = "|".join([profile.source_ref, income.source_ref, balance.source_ref, cashflow.source_ref])
         event_ref = "|".join([news.source_ref, actions.source_ref, vix.source_ref, brent.source_ref])
 
         observations = (
@@ -168,8 +176,8 @@ class UpstoxReadOnlyResearchProvider:
             ),
             ProviderObservation(
                 "BUSINESS_FUNDAMENTALS", symbol, run_at, fundamental_ref, True, "UPSTOX",
-                "PROFILE_QUARTERLY_INCOME",
-                detail="Company profile and consolidated quarterly income statement",
+                "PROFILE_INCOME_BALANCE_CASHFLOW",
+                detail="Company profile plus consolidated quarterly income, balance-sheet and cash-flow evidence",
             ),
             ProviderObservation(
                 "INSTITUTIONAL_BEHAVIOUR", symbol, run_at, holdings.source_ref, True, "UPSTOX",

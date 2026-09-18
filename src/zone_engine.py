@@ -122,7 +122,7 @@ def expected_price_zone(
 
     min_material_distance=0.50*mtr
     max_material_distance=1.75*mtr
-    extension=max(0.30*mtr, c*0.003)
+    extension=max(0.20*mtr, c*0.003)
 
     def material_support() -> Optional[float]:
         for level in ctx.supports:

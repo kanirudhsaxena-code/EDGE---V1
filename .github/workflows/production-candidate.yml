@@ -1,7 +1,12 @@
 name: EDGE Production Candidate
-# manual production-candidate validation
+# one-shot live EDGE LTF intraday run
 
 on:
+  push:
+    branches:
+      - "ops/live-edge-ltf-now"
+    paths:
+      - ".github/workflows/production-candidate.yml"
   workflow_dispatch:
     inputs:
       ticker:

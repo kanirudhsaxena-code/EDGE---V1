@@ -1,5 +1,5 @@
 name: EDGE Autonomous Publish
-# activation validation rerun after source-kind fix
+# activation validation rerun after component-quality fix
 
 on:
   workflow_dispatch:

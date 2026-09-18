@@ -73,7 +73,7 @@ def build_canonical_bundle(
             original_weight=row.original_weight,
             raw_score=row.raw_score,
             normalized_direction=row.normalized_direction,
-            evidence_quality="VERIFIED" if row.availability_status == "AVAILABLE" else "NOT_VERIFIED",
+            evidence_quality="HIGH" if row.availability_status == "AVAILABLE" else "NOT_VERIFIED",
             availability_status=row.availability_status,
             normalized_weight=row.normalized_weight,
             weighted_contribution=row.weighted_contribution,

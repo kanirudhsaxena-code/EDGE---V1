@@ -64,17 +64,27 @@ def run(token: str) -> dict:
         env=provider.daily(key,end-timedelta(days=120),end)
         candles=_candles(env.payload)
         ctx=derive_structure_context(candles,pattern_name="HISTORICAL_REPLAY")
-        zone=expected_price_zone(ctx,case["forecast"])
-        proposed=(zone.low,zone.high)
-        results.append({
-            "date":end.isoformat(),
-            "forecast":case["forecast"],
-            "manual_zone":list(case["manual_zone"]),
-            "proposed_zone":[round(zone.low,3),round(zone.high,3)],
-            "basis":zone.basis,
-            "width_pct":round(zone.width_pct,3),
-            **_metrics(proposed,case["manual_zone"]),
-        })
+        try:
+            zone=expected_price_zone(ctx,case["forecast"])
+            proposed=(zone.low,zone.high)
+            results.append({
+                "date":end.isoformat(),
+                "forecast":case["forecast"],
+                "manual_zone":list(case["manual_zone"]),
+                "proposed_zone":[round(zone.low,3),round(zone.high,3)],
+                "basis":zone.basis,
+                "width_pct":round(zone.width_pct,3),
+                "status":"SCORABLE",
+                **_metrics(proposed,case["manual_zone"]),
+            })
+        except ValueError as exc:
+            results.append({
+                "date":end.isoformat(),
+                "forecast":case["forecast"],
+                "manual_zone":list(case["manual_zone"]),
+                "status":"NOT_SCORABLE",
+                "reason":str(exc),
+            })
     return {
         "ticker":"LTF",
         "validation_type":"STRUCTURE_ZONE_HISTORICAL_REPLAY",

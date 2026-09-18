@@ -22,7 +22,7 @@ def test_ltf_live_shadow_maps_to_hold_and_no_option_trade_for_known_holder():
         holding_exists=True,
         rr=None,
     )
-    assert r.decision_ladder=="PILOT"
+    assert r.decision_ladder=="INVESTIGATION"
     assert r.definitive_recommendation=="HOLD"
     assert r.options_suitability_status=="NO OPTION TRADE"
     assert r.actionable is False
@@ -100,3 +100,19 @@ def test_o3_blocks_aggressive_action():
     )
     assert r.definitive_recommendation=="AVOID"
     assert r.options_suitability_status=="NO OPTION TRADE"
+
+
+def test_b_grade_directional_without_verified_rr_stays_investigation():
+    r=decide_action(
+        forecast="BULLISH",bot_grade="B",market_trust=80,
+        execution_quality_score=70,holding_status_known=False,rr=None
+    )
+    assert r.decision_ladder=="INVESTIGATION"
+
+
+def test_b_grade_directional_with_marginal_or_better_rr_can_be_pilot():
+    r=decide_action(
+        forecast="BULLISH",bot_grade="B",market_trust=80,
+        execution_quality_score=70,holding_status_known=False,rr=1.3
+    )
+    assert r.decision_ladder=="PILOT"

@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from zoneinfo import ZoneInfo
 from typing import Any, Optional
 
 from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
@@ -122,7 +123,7 @@ def build_production_candidate(
     )
 
     checkpoint_dates=fetch_next_five_nse_trading_dates(
-        market,start_after=run_at.astimezone().date()
+        market,start_after=run_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
     )
     parent_id=(
         state.open_recommendations[-1].recommendation_id

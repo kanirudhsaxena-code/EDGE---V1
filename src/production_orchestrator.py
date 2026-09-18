@@ -21,6 +21,7 @@ from enum import Enum
 from zoneinfo import ZoneInfo
 from typing import Any, Optional
 
+from src.assessment_context import load_assessment_context
 from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
 from src.autonomous_interpreter import ConservativeAutonomousInterpreter
 from src.checkpoint_reconciler import reconcile_overdue_checkpoints
@@ -91,6 +92,7 @@ def build_production_candidate(
     # today's incomplete session is never substituted for a daily close.
     reconcile_overdue_checkpoints(connection,market,ticker,run_at)
     state=recover_pre_run_state(connection,ticker,run_at)
+    assessment=load_assessment_context(connection,ticker)
     pre=evaluate_pre_run_gate(state.open_recommendations,state.efficacy_snapshot)
     if not pre.ready:
         return ProductionCandidateResult(
@@ -151,7 +153,7 @@ def build_production_candidate(
         rationale="Autonomous governed EDGE V1 production candidate.",
     )
     canonical=build_canonical_bundle(shadow,metadata)
-    report=render_standard_edge_report(canonical)
+    report=render_standard_edge_report(canonical,assessment)
 
     if not publish:
         return ProductionCandidateResult(

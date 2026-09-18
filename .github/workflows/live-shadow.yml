@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# error-code diagnostic rerun
+# v3-market-quote validation rerun
 
 on:
   workflow_dispatch:

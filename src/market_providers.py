@@ -86,7 +86,7 @@ def _upstox_error_code(exc: HTTPError) -> str:
 def _stage_label(path: str) -> str:
     if path == "/v2/instruments/search":
         return "INSTRUMENT_SEARCH"
-    if path == "/v2/market-quote/quotes":
+    if path in {"/v2/market-quote/quotes", "/v3/market-quote/quotes"}:
         return "MARKET_QUOTE"
     if path == "/v2/option/contract":
         return "OPTION_CONTRACT"
@@ -162,6 +162,7 @@ class UpstoxReadOnlyStockProvider:
         allowed_exact = {
             "/v2/instruments/search",
             "/v2/market-quote/quotes",
+            "/v3/market-quote/quotes",
             "/v2/option/contract",
             "/v2/option/chain",
         }
@@ -251,7 +252,7 @@ class UpstoxReadOnlyStockProvider:
         return next(iter(keys)), str(row.get("name") or symbol)
 
     def quote(self, instrument_key: str) -> ProviderEnvelope:
-        return self._get("/v2/market-quote/quotes", {"instrument_key": instrument_key})
+        return self._get("/v3/market-quote/quotes", {"instrument_key": instrument_key})
 
     def intraday(self, instrument_key: str) -> ProviderEnvelope:
         key = quote(instrument_key, safe="")

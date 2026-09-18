@@ -46,7 +46,7 @@ class FakeOpener:
                     "instrument_type": "EQ",
                 }],
             }
-        elif "/v2/market-quote/quotes" in url:
+        elif "/v2/market-quote/quotes" in url or "/v3/market-quote/quotes" in url:
             payload = {"status":"success","data":{"quote":{"last_price":302.3}}}
         elif "/v3/historical-candle/" in url:
             payload = {

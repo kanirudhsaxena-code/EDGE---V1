@@ -21,11 +21,11 @@ def canonical_evidence_records(
 
         parts=[p for p in ref.split("|") if p]
         if parts and all(p.startswith("upstox:") for p in parts):
-            source_kind="UPSTOX"
+            source_kind="OTHER_PERMITTED"
         elif parts and all(p.startswith(("http://","https://","web:")) for p in parts):
-            source_kind="WEB"
+            source_kind="WEB_RESEARCH"
         else:
-            source_kind="MIXED"
+            source_kind="OTHER_PERMITTED"
 
         digest=hashlib.sha256(ref.encode("utf-8")).hexdigest()
         rows.append(

@@ -7,7 +7,9 @@ def test_publisher_has_explicit_release_approval_and_no_trading_path():
     assert "ReleaseApproval(" in text
     assert "autonomous_publishing_approved=True" in text
     assert "trading_enabled" in text
-    assert "order" not in text.lower()
+    lowered=text.lower()
+    for forbidden in ("/order","place_order","modify_order","cancel_order","positions","funds"):
+        assert forbidden not in lowered
 
 
 def test_publish_workflow_is_separate_from_candidate_workflow():

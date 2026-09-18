@@ -74,7 +74,7 @@ def test_interpreter_produces_all_nine_components_when_structured_data_is_availa
         "VALUATION","EVENT_SHOCK",
     }
     assert rows["BUSINESS_FUNDAMENTALS"] == 2
-    assert rows["INSTITUTIONAL_BEHAVIOUR"] == 1
+    assert rows["INSTITUTIONAL_BEHAVIOUR"] == 2
     assert rows["VALUATION"] >= 1
     assert rows["NEWS_EVENTS_CATALYSTS"] >= 1
     assert out.completeness_score == 100.0

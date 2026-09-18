@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from src.production_orchestrator import HoldingState, build_production_candidate
 from src.release_gate import ReleaseApproval
@@ -88,10 +89,36 @@ def main() -> int:
 
     conn=psycopg.connect(db_url)
     try:
+        now=datetime.now(timezone.utc)
+        india_date=now.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select recommendation_id
+                from recommendations
+                where ticker=%s
+                  and recommendation_id like %s
+                  and (run_timestamp at time zone 'Asia/Kolkata')::date=%s
+                order by run_timestamp desc
+                limit 1
+                """,
+                (ticker,f"EDGE-{ticker}-%-AUTO",india_date),
+            )
+            existing=cur.fetchone()
+        if existing:
+            print(json.dumps({
+                "status":"ALREADY_PUBLISHED_TODAY",
+                "ticker":ticker,
+                "recommendation_id":existing[0],
+                "publishing_enabled":True,
+                "trading_enabled":False,
+            },sort_keys=True))
+            return 0
+
         result=build_production_candidate(
             connection=conn,
             ticker=ticker,
-            run_at=datetime.now(timezone.utc),
+            run_at=now,
             upstox_token=token,
             holding_state=holding,
             publish=True,

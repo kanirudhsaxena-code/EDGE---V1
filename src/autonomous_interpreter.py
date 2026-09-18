@@ -398,12 +398,12 @@ class ConservativeAutonomousInterpreter:
         stock_daily_payload = None
         benchmark_daily_payload = None
         for key,payload in payloads.items():
-            if "/historical-candle/" in key and "/days/1/" in key:
+            if "/historical-candle/" not in key or "/days/1/" not in key:
+                continue
+            if "NSE_EQ%7C" in key and stock_daily_payload is None:
                 stock_daily_payload = payload
-                break
-        # Benchmark may only have intraday in current acquisition. Use stock daily
-        # as fallback signal-unavailable; relative strength will become Not Verified.
-        benchmark_daily_payload = None
+            elif "NSE_INDEX%7CNifty%2050" in key and benchmark_daily_payload is None:
+                benchmark_daily_payload = payload
 
         stock_daily = _candles(stock_daily_payload)
         benchmark_daily = _candles(benchmark_daily_payload)

@@ -1,0 +1,117 @@
+"""Governed EDGE autonomous publishing CLI.
+
+This CLI persists a recommendation only after the already-implemented release
+guard confirms:
+- live shadow validation accepted
+- expected-zone method validated
+- autonomous publishing approved
+
+It never places broker orders and never accesses trading endpoints.
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+
+from src.production_orchestrator import HoldingState, build_production_candidate
+from src.release_gate import ReleaseApproval
+
+
+def _bounded_payload(result, ticker, holding):
+    payload={
+        "status":result.status,
+        "ticker":ticker,
+        "holding_state":holding.value,
+        "blockers":list(result.blockers),
+        "publishing_enabled":True,
+        "trading_enabled":False,
+        "persistence_id":result.persistence_id,
+    }
+    if result.canonical_bundle is not None:
+        b=result.canonical_bundle
+        payload.update({
+            "recommendation_id":b.recommendation_id,
+            "parent_recommendation_id":b.parent_recommendation_id,
+            "forecast":b.definitive_forecast,
+            "probabilities":{
+                "bull":round(float(b.bull_probability),3),
+                "base":round(float(b.base_probability),3),
+                "bear":round(float(b.bear_probability),3),
+            },
+            "expected_price_zone":[
+                float(b.expected_price_zone_low) if b.expected_price_zone_low is not None else None,
+                float(b.expected_price_zone_high) if b.expected_price_zone_high is not None else None,
+            ],
+            "des":round(float(b.des),3),
+            "market_trust":round(float(b.market_trust_score),3),
+            "market_trust_band":b.market_trust_band,
+            "bot_score":round(float(b.bot_score),3),
+            "bot_grade":b.bot_grade,
+            "decision_ladder":b.decision_ladder,
+            "definitive_recommendation":b.definitive_recommendation,
+            "checkpoint_dates":[d.isoformat() for d in b.checkpoint_dates],
+        })
+    return payload
+
+
+def main() -> int:
+    ticker=os.getenv("EDGE_TICKER","LTF").strip().upper()
+    token=os.getenv("UPSTOX_ANALYTICS_TOKEN","")
+    db_url=os.getenv("DATABASE_URL","")
+    holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
+
+    if not token or not db_url:
+        code="UPSTOX_TOKEN_MISSING" if not token else "DATABASE_URL_MISSING"
+        print(json.dumps({
+            "status":"BLOCKED_CONFIGURATION",
+            "diagnostic_code":code,
+            "ticker":ticker,
+            "publishing_enabled":False,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 2
+
+    try:
+        holding=HoldingState(holding_raw)
+    except ValueError:
+        print(json.dumps({
+            "status":"BLOCKED_CONFIGURATION",
+            "diagnostic_code":"INVALID_HOLDING_STATE",
+            "ticker":ticker,
+            "publishing_enabled":False,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 2
+
+    import psycopg
+
+    conn=psycopg.connect(db_url)
+    try:
+        result=build_production_candidate(
+            connection=conn,
+            ticker=ticker,
+            run_at=datetime.now(timezone.utc),
+            upstox_token=token,
+            holding_state=holding,
+            publish=True,
+            release_approval=ReleaseApproval(
+                shadow_validation_accepted=True,
+                zone_method_validated=True,
+                autonomous_publishing_approved=True,
+            ),
+        )
+        print(json.dumps(_bounded_payload(result,ticker,holding),sort_keys=True,default=str))
+        if result.report_markdown:
+            with open("edge-published-report.md","w",encoding="utf-8") as fh:
+                fh.write(result.report_markdown)
+        return 0 if result.status=="PUBLISHED" else 3
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+if __name__=="__main__":
+    raise SystemExit(main())

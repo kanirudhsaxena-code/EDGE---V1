@@ -42,6 +42,10 @@ def _validate_series(provider, cache, instrument_key, start, end):
     first=provider.daily(instrument_key,start,end)
     first_start,first_end,count=_candle_dates(first)
 
+    direct_cached=cache.read_daily(instrument_key,first_start,first_end)
+    if direct_cached is None:
+        raise RuntimeError("direct cache readback returned MISS")
+
     cached_provider=UpstoxReadOnlyStockProvider(
         "validation-placeholder-token",
         opener=NetworkForbidden(),

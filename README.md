@@ -53,3 +53,17 @@ The analytical methodology is governed by the canonical **EDGE V1 Master Specifi
 GitHub contains the technical implementation and must not silently redefine frozen EDGE methodology.
 
 Missing or unverified evidence must never be fabricated.
+
+
+## Canonical User-Facing Output Contract
+
+All new standard `EDGE <stock/company/ticker>` outputs use `EDGE_STOCKS_V1_2`.
+
+The presentation contract is defined in `docs/EDGE_STOCKS_OUTPUT_CONTRACT_V1_2.md` and is presentation/governance only. It does not alter the frozen EDGE V1 analytical core.
+
+A standard EDGE run must:
+- render exactly two standard tables: Outcome / Decision, then Institutional Drill-down;
+- expose DES, Market Trust, Directional Agreement, frozen Effective Conviction, Bull/Base/Bear probabilities, definitive forecast, expected zone, horizon, risk override, Decision Ladder/BOT and one governed primary action;
+- keep OFFICIAL closed/scorable efficacy separate from PROVISIONAL D+1 to D+5 checkpoint diagnostics;
+- display missing evidence as Not Verified / Not Available / Not Scorable rather than infer it;
+- fail closed if the contract is incomplete.

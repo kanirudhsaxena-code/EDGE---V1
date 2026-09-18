@@ -23,6 +23,7 @@ from src.pre_run_gate import (
     evaluate_pre_run_gate,
 )
 from src.scoring import validate_probabilities
+from src.release_gate import ReleaseApproval, evaluate_release_gate
 
 
 class PersistenceAdapter(Protocol):
@@ -121,6 +122,7 @@ def run_governed_edge(
     options_decision_requested: bool = False,
     persistence: Optional[PersistenceAdapter] = None,
     publish: bool = False,
+    release_approval: Optional[ReleaseApproval] = None,
 ) -> RunnerResult:
     """Execute the governed sequence and fail closed on any inconsistency.
 
@@ -129,7 +131,8 @@ def run_governed_edge(
       2. Validate fresh evidence.
       3. Invoke the injected frozen EDGE engine.
       4. Validate the engine output envelope and evidence lineage.
-      5. Persist only when publish=True and a persistence adapter is supplied.
+      5. Enforce explicit production release approval before any persistence.
+      6. Persist only when publish=True and a persistence adapter is supplied.
 
     The runner never changes frozen EDGE weights/formulas and never derives a
     recommendation on its own.
@@ -188,6 +191,21 @@ def run_governed_edge(
         return RunnerResult(
             status="SHADOW_READY",
             blockers=(),
+            warnings=evidence_gate.warnings,
+            pre_run_gate=pre,
+            evidence_gate=evidence_gate,
+            recommendation=recommendation,
+            persistence_id=None,
+        )
+
+    release = evaluate_release_gate(
+        release_approval or ReleaseApproval(),
+        recommendation_text=recommendation.definitive_recommendation,
+    )
+    if not release.ready:
+        return RunnerResult(
+            status="BLOCKED_RELEASE_GOVERNANCE",
+            blockers=release.blockers,
             warnings=evidence_gate.warnings,
             pre_run_gate=pre,
             evidence_gate=evidence_gate,

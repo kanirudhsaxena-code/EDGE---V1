@@ -1,0 +1,38 @@
+name: EDGE Live Shadow
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "NSE trading symbol"
+        required: true
+        default: "LTF"
+
+permissions:
+  contents: read
+
+jobs:
+  live-shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+      EDGE_TICKER: ${{ inputs.ticker }}
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run non-publishing live shadow
+        run: |
+          set -o pipefail
+          python -m src.live_shadow | tee edge-shadow-result.json
+      - name: Upload bounded shadow result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-live-shadow-result
+          path: edge-shadow-result.json
+          if-no-files-found: ignore
+          retention-days: 7

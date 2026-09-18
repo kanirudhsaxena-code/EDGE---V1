@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# volatility-structure zone validation rerun
+# manual live-shadow validation
 
 on:
   workflow_dispatch:
@@ -8,11 +8,6 @@ on:
         description: "NSE trading symbol"
         required: true
         default: "LTF"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/live-shadow.yml"
 
 permissions:
   contents: read

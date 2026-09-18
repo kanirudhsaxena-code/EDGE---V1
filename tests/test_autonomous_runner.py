@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from src.autonomous_runner import RecommendationEnvelope, run_governed_edge
 from src.evidence_gate import EvidenceItem, REQUIRED_CORE_CATEGORIES
 from src.pre_run_gate import EfficacySnapshot, OpenRecommendationState
+from src.release_gate import ReleaseApproval
 
 RUN_AT = datetime(2026, 9, 18, 4, 0, tzinfo=timezone.utc)
 
@@ -193,7 +194,7 @@ class MemoryPersistence:
         return "EDGE-LTF-20260918-01"
 
 
-def test_publish_requires_explicit_persistence_adapter():
+def test_publish_is_blocked_by_default_release_governance():
     result = run_governed_edge(
         ticker="LTF",
         run_at=RUN_AT,
@@ -202,6 +203,21 @@ def test_publish_requires_explicit_persistence_adapter():
         evidence=evidence(),
         engine=good_engine,
         publish=True,
+    )
+    assert result.status == "BLOCKED_RELEASE_GOVERNANCE"
+    assert any("autonomous publishing" in b for b in result.blockers)
+
+
+def test_publish_requires_persistence_after_explicit_release_approval():
+    result = run_governed_edge(
+        ticker="LTF",
+        run_at=RUN_AT,
+        open_recommendations=open_calls(),
+        efficacy_snapshot=efficacy(),
+        evidence=evidence(),
+        engine=good_engine,
+        publish=True,
+        release_approval=ReleaseApproval(True,True,True),
     )
     assert result.status == "BLOCKED_PERSISTENCE"
 
@@ -217,6 +233,7 @@ def test_publish_persists_only_after_all_validations_pass():
         engine=good_engine,
         persistence=persistence,
         publish=True,
+        release_approval=ReleaseApproval(True,True,True),
     )
     assert result.status == "PUBLISHED"
     assert result.persistence_id == "EDGE-LTF-20260918-01"

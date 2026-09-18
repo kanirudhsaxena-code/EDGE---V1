@@ -23,6 +23,7 @@ class OpenRecommendationState:
     due_checkpoint_count: int
     captured_checkpoint_count: int
     latest_checkpoint_observed_at: Optional[str] = None
+    overdue_checkpoint_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,12 @@ def evaluate_pre_run_gate(
             blockers.append(f"{rid or 'unknown recommendation'} captured checkpoints exceed scheduled checkpoints")
         if row.captured_checkpoint_count > 0 and not row.latest_checkpoint_observed_at:
             blockers.append(f"{rid or 'unknown recommendation'} has captured checkpoints but no observation timestamp")
+        if row.overdue_checkpoint_count < 0:
+            blockers.append(f"{rid or 'unknown recommendation'} has negative overdue checkpoint count")
+        if row.overdue_checkpoint_count > 0:
+            blockers.append(
+                f"{rid or 'unknown recommendation'} has {row.overdue_checkpoint_count} overdue DUE checkpoint(s)"
+            )
 
     return PreRunGateResult(
         ready=not blockers,

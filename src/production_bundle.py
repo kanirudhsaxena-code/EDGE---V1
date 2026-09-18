@@ -84,6 +84,9 @@ def build_canonical_bundle(
         for row in des.components
     )
 
+    final_execution_quality = metadata.execution_plan.execution_quality_score
+    if final_execution_quality is None:
+        raise ValueError("final execution quality score is required")
     leading=max(shadow.bull_probability,shadow.base_probability,shadow.bear_probability)
     bot=bot_hunter(BotInputs(
         leading_probability=leading,
@@ -91,7 +94,7 @@ def build_canonical_bundle(
         structure_pattern_quality=shadow.structure_pattern_quality,
         pv_pvpo_confirmation=shadow.pv_pvpo_confirmation,
         catalyst_asymmetry=shadow.catalyst_asymmetry,
-        execution_quality=shadow.execution_quality,
+        execution_quality=float(final_execution_quality),
     ))
 
     mt=MarketTrustWrite(
@@ -110,9 +113,9 @@ def build_canonical_bundle(
         structure_pattern_quality=shadow.structure_pattern_quality,
         pv_pvpo_confirmation=shadow.pv_pvpo_confirmation,
         catalyst_asymmetry=shadow.catalyst_asymmetry,
-        execution_quality=shadow.execution_quality,
-        bot_score=shadow.bot_score,
-        bot_grade=shadow.bot_grade,
+        execution_quality=float(final_execution_quality),
+        bot_score=bot.score,
+        bot_grade=bot.grade,
         decision_ladder=metadata.decision_ladder,
     )
 
@@ -132,8 +135,8 @@ def build_canonical_bundle(
         des=shadow.des,
         market_trust_score=shadow.market_trust,
         market_trust_band=shadow.market_trust_band,
-        bot_score=shadow.bot_score,
-        bot_grade=shadow.bot_grade,
+        bot_score=bot.score,
+        bot_grade=bot.grade,
         decision_ladder=metadata.decision_ladder,
         definitive_recommendation=metadata.definitive_recommendation,
         holding_status_known=metadata.holding_status_known,

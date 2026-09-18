@@ -104,3 +104,10 @@ def test_cache_failure_never_blocks_authenticated_provider_read():
     result=provider.daily("NSE_EQ|ABC",date(2026,9,18),date(2026,9,18))
     assert result.payload["data"]["candles"]
     assert len(opener.calls)==1
+
+
+def test_cache_coverage_uses_nse_session_date_not_utc_date():
+    from src.historical_cache import _session_date
+    # NSE daily candles may serialize midnight IST as the previous UTC date.
+    assert _session_date("2026-09-18T00:00:00+05:30")==date(2026,9,18)
+    assert _session_date("2026-09-17T18:30:00+00:00")==date(2026,9,18)

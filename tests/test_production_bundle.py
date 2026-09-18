@@ -106,3 +106,13 @@ def test_duplicate_or_unverified_calendar_dates_are_blocked():
         assert "ordered" in str(exc) or "unique" in str(exc)
     else:
         raise AssertionError("calendar dates must fail closed")
+
+
+def test_canonical_bundle_deduplicates_shared_evidence_refs():
+    s=shadow()
+    dup_rec=RecommendationEnvelope(
+        **{**s.recommendation.__dict__,"evidence_refs":("ref:a","ref:a","ref:b")}
+    )
+    s2=ShadowComputation(**{**s.__dict__,"recommendation":dup_rec})
+    b=build_canonical_bundle(s2,meta())
+    assert b.evidence_source_refs==("ref:a","ref:b")

@@ -78,7 +78,10 @@ def test_interpreter_produces_all_nine_components_when_structured_data_is_availa
     assert rows["VALUATION"] >= 1
     assert rows["NEWS_EVENTS_CATALYSTS"] >= 1
     assert out.completeness_score == 100.0
-    assert out.expected_price_zone_low < out.expected_price_zone_high
+    assert out.expected_price_zone_low is None
+    assert out.expected_price_zone_high is None
+    assert out.zone_context is not None
+    assert out.zone_context.close > 0
     assert out.definitive_recommendation.startswith("SHADOW ONLY")
 
 

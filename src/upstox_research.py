@@ -160,17 +160,22 @@ class UpstoxReadOnlyResearchProvider:
         holdings = self._get(f"/v2/fundamentals/{isin}/share-holdings")
         ratios = self._get(f"/v2/fundamentals/{isin}/key-ratios")
         actions = self._get(f"/v2/fundamentals/{isin}/corporate-actions")
-        vix = self._get("/v3/market-quote/quotes", {"instrument_key": INDIA_VIX})
-        brent = self._get("/v3/market-quote/quotes", {"instrument_key": BRENT})
+        macro_envs = []
+        for macro_key in (INDIA_VIX, BRENT):
+            try:
+                macro_envs.append(self._get("/v3/market-quote/quotes", {"instrument_key": macro_key}))
+            except AcquisitionError:
+                pass
 
-        payloads = {
-            env.source_ref: env.payload
-            for env in (news, profile, income, balance, cashflow, holdings, ratios, actions, vix, brent)
-        }
+        base_envs = (news, profile, income, balance, cashflow, holdings, ratios, actions)
+        payloads = {env.source_ref: env.payload for env in base_envs}
+        for env in macro_envs:
+            payloads[env.source_ref] = env.payload
 
         news_ref = news.source_ref
         fundamental_ref = "|".join([profile.source_ref, income.source_ref, balance.source_ref, cashflow.source_ref])
-        event_ref = "|".join([news.source_ref, actions.source_ref, vix.source_ref, brent.source_ref])
+        event_parts = [news.source_ref, actions.source_ref] + [env.source_ref for env in macro_envs]
+        event_ref = "|".join(event_parts)
 
         observations = (
             ProviderObservation(
@@ -196,7 +201,7 @@ class UpstoxReadOnlyResearchProvider:
             ProviderObservation(
                 "EVENT_SHOCK", symbol, run_at, event_ref, True, "UPSTOX",
                 "NEWS_CORPORATE_ACTIONS_VIX_BRENT",
-                detail="Recent company news/corporate actions plus India VIX and Brent snapshots",
+                detail="Recent company news/corporate actions plus available macro snapshots (India VIX/Brent when retrievable)",
             ),
         )
         return ResearchAcquisition(observations, payloads)

@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# resilient benchmark/macro quote validation rerun
+# component-diagnostic validation rerun
 
 on:
   workflow_dispatch:

@@ -1,7 +1,12 @@
 name: EDGE Production Candidate
-# manual production-candidate validation
+# one-shot live EDGE LTF master-spec run
 
 on:
+  push:
+    branches:
+      - "ops/live-edge-ltf-now-v2"
+    paths:
+      - ".github/workflows/production-candidate.yml"
   workflow_dispatch:
     inputs:
       ticker:
@@ -37,6 +42,8 @@ jobs:
         run: |
           set -o pipefail
           python -m src.production_candidate_cli | tee edge-production-candidate.json
+      - name: Print exact master-spec report
+        run: cat edge-production-candidate-report.md
       - name: Upload bounded candidate artifacts
         if: always()
         uses: actions/upload-artifact@v4

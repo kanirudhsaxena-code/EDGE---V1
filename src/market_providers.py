@@ -245,18 +245,24 @@ class UpstoxReadOnlyStockProvider:
         )
         benchmark_quote = self.quote(NIFTY_50)
         benchmark_intraday = self.intraday(NIFTY_50)
+        benchmark_daily = self.daily(
+            NIFTY_50,
+            run_at.date() - timedelta(days=180),
+            run_at.date(),
+        )
         self._require_candles(stock_intraday)
         self._require_candles(stock_daily)
         self._require_candles(benchmark_intraday)
+        self._require_candles(benchmark_daily)
 
         payloads: dict[str, Mapping[str, Any]] = {}
-        for env in (stock_quote, stock_intraday, stock_daily, benchmark_quote, benchmark_intraday):
+        for env in (stock_quote, stock_intraday, stock_daily, benchmark_quote, benchmark_intraday, benchmark_daily):
             payloads[env.source_ref] = env.payload
 
         market_ref = "|".join(
             [stock_quote.source_ref, stock_intraday.source_ref, stock_daily.source_ref]
         )
-        rs_ref = "|".join([stock_quote.source_ref, benchmark_quote.source_ref, benchmark_intraday.source_ref])
+        rs_ref = "|".join([stock_quote.source_ref, benchmark_quote.source_ref, benchmark_intraday.source_ref, benchmark_daily.source_ref])
 
         observations: list[ProviderObservation] = [
             ProviderObservation(

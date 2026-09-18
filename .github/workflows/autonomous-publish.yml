@@ -1,5 +1,5 @@
 name: EDGE Autonomous Publish
-# activation validation rerun after evidence-ref fix
+# activation validation rerun after source-kind fix
 
 on:
   workflow_dispatch:

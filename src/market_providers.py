@@ -141,7 +141,7 @@ class UpstoxReadOnlyStockProvider:
                 received = datetime.now(timezone.utc)
                 digest = hashlib.sha256(raw).hexdigest()
                 return ProviderEnvelope(
-                    source_ref=f"upstox:{path}#sha256={digest}",
+                    source_ref=f"upstox:{path}" + (f"?{urlencode(sorted(params.items()))}" if params else "") + f"#sha256={digest}",
                     received_at=received,
                     path=path,
                     parameters=params,

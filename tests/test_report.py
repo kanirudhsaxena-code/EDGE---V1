@@ -111,3 +111,22 @@ def test_no_trade_plan_can_leave_entry_stop_targets_na():
     text=render_standard_edge_report(bundle(),assessment())
     assert "| Entry | N/A | N/A |" in text
     assert "| Options Contract | N/A | NO OPTION TRADE |" in text
+
+
+def test_verified_component_interpretations_are_meaningful():
+    summaries={
+        "Business & Fundamentals":("POSITIVE","Verified income-statement growth evidence produced governed fundamentals score +1."),
+        "Valuation":("NEGATIVE","Verified company-versus-sector valuation ratios produced governed valuation score -1."),
+        "Price Structure":("NEGATIVE","Price structure is negative under the frozen trend rules."),
+        "Specific Chart Pattern":("TREND_CONTINUATION","Verified daily candles classify the active pattern as TREND_CONTINUATION."),
+        "PV/PVPO":("NEUTRAL","Price-volume confirmation produced governed score +0."),
+        "Relative Strength":("NEGATIVE","Relative performance versus Nifty 50 produced governed score -1."),
+        "Institutional Behaviour":("NEGATIVE","Verified FII / mutual-fund / DII holding changes produced governed institutional score -1."),
+        "News, Events & Catalysts (10–15D)":("NEUTRAL","Verified recent-news catalyst classification produced governed score +0."),
+        "Event-Shock Risk":("NO MATERIAL SHOCK FLAG","Verified event-risk screen produced governed score +0."),
+    }
+    text=render_standard_edge_report(bundle(),assessment(),component_summaries=summaries)
+    assert "Component evidence retained in immutable audit record" not in text
+    assert "Verified income-statement growth evidence" in text
+    assert "Relative performance versus Nifty 50" in text
+    assert text.index("| EDGE MASTER ASSESSMENT |") < text.index("| DRILL-DOWN |")

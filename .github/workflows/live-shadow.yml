@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# one-shot structure-zone validation
+# one-shot historical zone replay
 
 on:
   workflow_dispatch:
@@ -34,11 +34,22 @@ jobs:
         run: |
           set -o pipefail
           python -m src.live_shadow | tee edge-shadow-result.json
+      - name: Run historical structure-zone validation
+        run: |
+          python -m src.zone_validation | tee edge-zone-validation.json
       - name: Upload bounded shadow result
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: edge-live-shadow-result
           path: edge-shadow-result.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload bounded zone-validation result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-zone-validation-result
+          path: edge-zone-validation.json
           if-no-files-found: ignore
           retention-days: 7

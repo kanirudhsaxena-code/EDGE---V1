@@ -75,3 +75,15 @@ def test_pre_run_gate_allows_zero_open_recommendations():
     result = evaluate_pre_run_gate([], valid_snapshot())
     assert result.ready is True
     assert result.assessed_open_recommendations == 0
+
+
+def test_overdue_due_checkpoint_blocks_new_run():
+    row=OpenRecommendationState(
+        recommendation_id="EDGE-X-1",ticker="X",lifecycle_status="OPEN",
+        expiry_trading_date="2026-09-25",due_checkpoint_count=5,
+        captured_checkpoint_count=1,latest_checkpoint_observed_at="2026-09-17T10:00:00Z",
+        overdue_checkpoint_count=1,
+    )
+    result=evaluate_pre_run_gate([row],valid_snapshot())
+    assert result.ready is False
+    assert any("overdue DUE checkpoint" in b for b in result.blockers)

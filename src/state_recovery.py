@@ -107,7 +107,7 @@ def recover_pre_run_state(connection: Any, ticker: str, run_at: datetime) -> Rec
             where r.ticker=%s
               and l.include_in_master_metrics
               and l.status='OPEN'
-            group by r.recommendation_id,r.ticker,l.status,l.expiry_trading_date
+            group by r.recommendation_id,r.ticker,l.status,l.expiry_trading_date,r.run_timestamp
             order by r.run_timestamp
             """,
             (local_date,local_date,after_close,symbol),

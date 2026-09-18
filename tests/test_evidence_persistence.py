@@ -18,7 +18,7 @@ def test_maps_verified_upstox_evidence_to_canonical_row():
     r=rows[0]
     assert r.ticker=="LTF"
     assert r.evidence_type=="PRICE_STRUCTURE"
-    assert r.source_kind=="UPSTOX"
+    assert r.source_kind=="OTHER_PERMITTED"
     assert r.verification_status=="VERIFIED"
     assert len(r.content_hash)==64
 

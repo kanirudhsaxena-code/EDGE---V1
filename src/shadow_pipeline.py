@@ -60,6 +60,16 @@ class ShadowComputation:
     definitive_forecast: str
     bot_score: float
     bot_grade: str
+    component_scores: tuple[ComponentInput, ...]
+    evidence_quality_score: float
+    freshness_score: float
+    completeness_score: float
+    market_confirmation_score: float
+    structure_pattern_quality: float
+    pv_pvpo_confirmation: float
+    catalyst_asymmetry: float
+    execution_quality: float
+    event_override: Optional[str]
     recommendation: RecommendationEnvelope
 
 
@@ -152,5 +162,15 @@ def compute_shadow_recommendation(
         definitive_forecast=prob.definitive_forecast,
         bot_score=bot.score,
         bot_grade=bot.grade,
+        component_scores=interpreted.component_scores,
+        evidence_quality_score=interpreted.evidence_quality_score,
+        freshness_score=interpreted.freshness_score,
+        completeness_score=interpreted.completeness_score,
+        market_confirmation_score=interpreted.market_confirmation_score,
+        structure_pattern_quality=interpreted.structure_pattern_quality,
+        pv_pvpo_confirmation=interpreted.pv_pvpo_confirmation,
+        catalyst_asymmetry=interpreted.catalyst_asymmetry,
+        execution_quality=interpreted.execution_quality,
+        event_override=interpreted.event_override,
         recommendation=recommendation,
     )

@@ -79,6 +79,10 @@ def run_live_shadow(ticker: str, token: str, run_at: datetime | None = None) -> 
             result.recommendation.expected_price_zone_low,
             result.recommendation.expected_price_zone_high,
         ],
+        "expected_price_zone_basis": result.zone_basis,
+        "expected_price_zone_width_pct": (
+            round(result.zone_width_pct, 3) if result.zone_width_pct is not None else None
+        ),
         "recommendation": result.recommendation.definitive_recommendation,
         "evidence_count": len(bundle.evidence),
         "shadow_diagnostics": {

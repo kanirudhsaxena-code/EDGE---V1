@@ -1,4 +1,4 @@
-from src.zone_engine import derive_structure_context, expected_price_zone
+from src.zone_engine import MarketStructureContext, derive_structure_context, expected_price_zone
 
 
 def synthetic():
@@ -12,47 +12,64 @@ def synthetic():
     return rows
 
 
-def test_base_zone_uses_nearest_structural_levels_and_is_compact():
+def test_expected_zone_is_two_sided_for_all_forecasts():
     ctx=derive_structure_context(synthetic(),pattern_name="RANGE")
+    zones=[expected_price_zone(ctx,f) for f in ("BASE_RANGE","BULLISH","BEARISH")]
+    for z in zones:
+        assert z.low < ctx.close < z.high
+        assert z.width_pct < 12
+        assert z.basis == "VOLATILITY_STRUCTURE_ENVELOPE"
+
+
+def test_nearby_material_support_can_tighten_lower_boundary():
+    ctx=MarketStructureContext(
+        close=100.0,
+        supports=(96.0,90.0),
+        resistances=(110.0,),
+        median_true_range=5.0,
+        pattern_name="RANGE",
+    )
     z=expected_price_zone(ctx,"BASE_RANGE")
-    assert z.low < ctx.close < z.high
-    assert z.width_pct < 12
-    assert z.basis == "NEAREST_SUPPORT_RESISTANCE"
+    # baseline low is 95; support at 96 is material and tightens the lower edge.
+    assert abs(z.low-96.0) < 1e-9
+    assert z.support_used == 96.0
 
 
-def test_bullish_zone_uses_resistance_objectives():
-    ctx=derive_structure_context(synthetic(),pattern_name="TREND_CONTINUATION")
-    z=expected_price_zone(ctx,"BULLISH")
-    assert z.low >= ctx.close
-    assert z.high > z.low
-    assert z.resistance_used is not None
+def test_nearby_material_resistance_can_extend_upper_boundary():
+    ctx=MarketStructureContext(
+        close=100.0,
+        supports=(90.0,),
+        resistances=(106.0,120.0),
+        median_true_range=5.0,
+        pattern_name="RANGE",
+    )
+    z=expected_price_zone(ctx,"BASE_RANGE")
+    # baseline high is 105; 106 resistance is material and receives a small
+    # observed-volatility tolerance, extending the envelope.
+    assert z.high > 106.0
+    assert z.resistance_used == 106.0
 
 
-def test_bearish_zone_uses_support_objectives():
-    ctx=derive_structure_context(synthetic(),pattern_name="TREND_CONTINUATION")
-    z=expected_price_zone(ctx,"BEARISH")
-    assert z.high <= ctx.close
-    assert z.low < z.high
-    assert z.support_used is not None
+def test_micro_levels_do_not_collapse_zone():
+    ctx=MarketStructureContext(
+        close=100.0,
+        supports=(99.5,),
+        resistances=(100.5,),
+        median_true_range=5.0,
+        pattern_name="RANGE",
+    )
+    z=expected_price_zone(ctx,"BASE_RANGE")
+    assert abs(z.low-95.0) < 1e-9
+    assert abs(z.high-105.0) < 1e-9
+    assert z.support_used is None
+    assert z.resistance_used is None
 
 
-def test_missing_two_sided_structure_blocks_base_zone():
-    from src.zone_engine import MarketStructureContext
-    ctx=MarketStructureContext(100.0,(95.0,),(),2.0,"RANGE")
+def test_invalid_context_fails_closed():
+    ctx=MarketStructureContext(100.0,(),(),0.0,"RANGE")
     try:
         expected_price_zone(ctx,"BASE_RANGE")
     except ValueError as exc:
-        assert "support and resistance" in str(exc)
+        assert "invalid market structure" in str(exc)
     else:
-        raise AssertionError("must fail closed")
-
-
-def test_overly_broad_structure_blocks_release_candidate():
-    from src.zone_engine import MarketStructureContext
-    ctx=MarketStructureContext(100.0,(80.0,),(120.0,),2.0,"RANGE")
-    try:
-        expected_price_zone(ctx,"BASE_RANGE")
-    except ValueError as exc:
-        assert "too broad" in str(exc)
-    else:
-        raise AssertionError("broad zone must fail closed")
+        raise AssertionError("invalid structure context must fail closed")

@@ -17,6 +17,23 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 
 @dataclass(frozen=True)
+class CanonicalEvidenceWrite:
+    ticker: str
+    evidence_type: str
+    source_kind: str
+    capture_timestamp: Optional[datetime]
+    freshness: str
+    quality: str
+    verification_status: str
+    source_ref: str
+    observation: Optional[str] = None
+    content_hash: Optional[str] = None
+    publication_timestamp: Optional[datetime] = None
+    event_timestamp: Optional[datetime] = None
+    file_ref: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class ComponentScoreWrite:
     component: str
     original_weight: float
@@ -186,14 +203,71 @@ class AtomicNeonPersistenceAdapter:
     commit(), and rollback(). The cursor must support execute() and fetchone().
     """
 
-    def __init__(self, connection_factory: Callable[[], Any]):
+    def __init__(
+        self,
+        connection_factory: Callable[[], Any],
+        evidence_records: Sequence[CanonicalEvidenceWrite] = (),
+    ):
         self._connection_factory = connection_factory
+        self._evidence_records = tuple(evidence_records)
 
     def persist(self, bundle: CanonicalRecommendationWrite) -> str:
         _validate_bundle(bundle)
         conn = self._connection_factory()
         cur = conn.cursor()
         try:
+            for evidence in self._evidence_records:
+                if evidence.ticker.strip().upper() != bundle.ticker.strip().upper():
+                    raise ValueError("evidence ticker must match recommendation ticker")
+                if not evidence.source_ref.strip():
+                    raise ValueError("canonical evidence source_ref is required")
+                if evidence.verification_status != "VERIFIED":
+                    raise ValueError("only VERIFIED evidence can be persisted for a production recommendation")
+
+                cur.execute(
+                    """
+                    select evidence_id
+                    from evidence_items
+                    where ticker=%s
+                      and source_ref=%s
+                      and verification_status='VERIFIED'
+                      and coalesce(content_hash,'')=coalesce(%s,'')
+                    order by ingestion_timestamp desc
+                    limit 1
+                    """,
+                    (
+                        evidence.ticker.upper(),
+                        evidence.source_ref,
+                        evidence.content_hash,
+                    ),
+                )
+                existing = cur.fetchone()
+                if not existing:
+                    cur.execute(
+                        """
+                        insert into evidence_items (
+                          ticker,evidence_type,source_kind,capture_timestamp,
+                          publication_timestamp,event_timestamp,freshness,quality,
+                          verification_status,file_ref,source_ref,observation,content_hash
+                        ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        """,
+                        (
+                            evidence.ticker.upper(),
+                            evidence.evidence_type,
+                            evidence.source_kind,
+                            evidence.capture_timestamp,
+                            evidence.publication_timestamp,
+                            evidence.event_timestamp,
+                            evidence.freshness,
+                            evidence.quality,
+                            evidence.verification_status,
+                            evidence.file_ref,
+                            evidence.source_ref,
+                            evidence.observation,
+                            evidence.content_hash,
+                        ),
+                    )
+
             cur.execute(
                 """
                 insert into edge_runs

@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from src.persistence import (
     AtomicNeonPersistenceAdapter,
     BotScoreWrite,
+    CanonicalEvidenceWrite,
     CanonicalRecommendationWrite,
     ComponentScoreWrite,
     ExecutionPlanWrite,
@@ -184,3 +185,48 @@ def test_invalid_probability_sum_is_rejected_before_connection():
     else:
         raise AssertionError("bad probability sum must fail")
     assert called["value"] is False
+
+
+def test_verified_evidence_can_be_inserted_atomically_before_recommendation():
+    cur = FakeCursor(evidence_rows=[(10,"ref:a"),(11,"ref:b")])
+    conn = FakeConnection(cur)
+    records=(
+        CanonicalEvidenceWrite(
+            ticker="LTF",evidence_type="PRICE_STRUCTURE",source_kind="UPSTOX",
+            capture_timestamp=datetime(2026,9,18,4,0,tzinfo=timezone.utc),
+            freshness="FRESH",quality="HIGH",verification_status="VERIFIED",
+            source_ref="ref:a",content_hash="hash-a",
+        ),
+        CanonicalEvidenceWrite(
+            ticker="LTF",evidence_type="PV_PVPO",source_kind="UPSTOX",
+            capture_timestamp=datetime(2026,9,18,4,0,tzinfo=timezone.utc),
+            freshness="FRESH",quality="HIGH",verification_status="VERIFIED",
+            source_ref="ref:b",content_hash="hash-b",
+        ),
+    )
+    adapter = AtomicNeonPersistenceAdapter(lambda: conn,evidence_records=records)
+    rid=adapter.persist(bundle())
+    assert rid=="EDGE-LTF-20260918-01"
+    sql="\n".join(call[0] for call in cur.calls)
+    assert "insert into evidence_items" in sql
+    assert sql.index("insert into evidence_items") < sql.index("insert into edge_runs")
+    assert conn.committed is True
+
+
+def test_unverified_evidence_record_rolls_back_and_blocks_commit():
+    cur=FakeCursor(evidence_rows=[(10,"ref:a"),(11,"ref:b")])
+    conn=FakeConnection(cur)
+    bad=CanonicalEvidenceWrite(
+        ticker="LTF",evidence_type="PRICE_STRUCTURE",source_kind="UPSTOX",
+        capture_timestamp=datetime(2026,9,18,4,0,tzinfo=timezone.utc),
+        freshness="FRESH",quality="HIGH",verification_status="NOT_VERIFIED",
+        source_ref="ref:a",content_hash="hash-a",
+    )
+    adapter=AtomicNeonPersistenceAdapter(lambda:conn,evidence_records=(bad,))
+    try:
+        adapter.persist(bundle())
+    except ValueError as exc:
+        assert "VERIFIED" in str(exc)
+    else:
+        raise AssertionError("unverified evidence must fail closed")
+    assert conn.rolled_back is True

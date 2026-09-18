@@ -150,12 +150,13 @@ class ResearchProvider(Protocol):
 class UpstoxReadOnlyStockProvider:
     """Hardened read-only stock market-data provider."""
 
-    def __init__(self, token: str, opener=None, sleep=time.sleep):
+    def __init__(self, token: str, opener=None, sleep=time.sleep, historical_cache=None):
         if not token or not token.strip():
             raise AcquisitionError("UPSTOX_TOKEN_MISSING")
         self._token = token.strip()
         self._opener = opener or build_opener(_NoRedirect())
         self._sleep = sleep
+        self._historical_cache = historical_cache
 
     def _get(self, path: str, params: Optional[Mapping[str, str]] = None) -> ProviderEnvelope:
         params = dict(params or {})
@@ -262,10 +263,36 @@ class UpstoxReadOnlyStockProvider:
     def daily(self, instrument_key: str, start: date, end: date) -> ProviderEnvelope:
         if start > end or (end - start).days > 366:
             raise AcquisitionError("INVALID_HISTORY_RANGE")
+
+        cache = self._historical_cache
+        if cache is not None:
+            try:
+                cached = cache.read_daily(instrument_key, start, end)
+                if cached is not None:
+                    return cached
+            except Exception:
+                # Cache is an execution-resilience layer, never a reason to lose
+                # an otherwise valid authenticated provider read.
+                pass
+
         key = quote(instrument_key, safe="")
-        return self._get(
+        envelope = self._get(
             f"/v3/historical-candle/{key}/days/1/{end.isoformat()}/{start.isoformat()}"
         )
+
+        if cache is not None:
+            try:
+                cache.write_daily(
+                    instrument_key,
+                    envelope,
+                    requested_start=start,
+                    requested_end=end,
+                )
+            except Exception:
+                # Preserve provider availability; cache failures are separately
+                # observable through cache-health checks and never alter EDGE logic.
+                pass
+        return envelope
 
     def market_holidays(self) -> ProviderEnvelope:
         return self._get("/v2/market/holidays")

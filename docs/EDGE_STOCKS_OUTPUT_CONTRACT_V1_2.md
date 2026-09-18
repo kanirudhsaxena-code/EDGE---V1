@@ -1,5 +1,7 @@
 # EDGE Stocks User-Facing Output Contract V1.2
 
+> **STATUS: DEPRECATED / SUPERSEDED.** Historical/audit only. New `EDGE <stock/company/ticker>` outputs must use **EDGE_STOCKS_V1_3 / EFFICACY_V2**. See `docs/EDGE_STOCKS_OUTPUT_CONTRACT_V1_3.md`.
+
 Status: CANONICAL PRESENTATION CONTRACT  
 Framework: EDGE V1 analytical core (unchanged)  
 Contract version: `EDGE_STOCKS_V1_2`

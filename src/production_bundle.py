@@ -16,6 +16,7 @@ It fails closed rather than inventing calendar dates, actions, or execution leve
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from datetime import date
 from typing import Optional
 
@@ -79,7 +80,10 @@ def build_canonical_bundle(
             weighted_contribution=row.weighted_contribution,
             conflict_flag=False,
             gate_override_flag=shadow.event_override,
-            notes=None,
+            notes=json.dumps({
+                "key_outcome": shadow.component_summaries.get(row.component, (row.availability_status, ""))[0],
+                "interpretation": shadow.component_summaries.get(row.component, (row.availability_status, ""))[1],
+            }, sort_keys=True) if row.component in shadow.component_summaries else None,
         )
         for row in des.components
     )

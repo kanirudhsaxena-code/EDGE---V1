@@ -381,6 +381,74 @@ def _market_confirmation(scores: Mapping[str, Optional[int]]) -> float:
     return 40.0
 
 
+
+def _score_label(score: Optional[int]) -> str:
+    return {2:"STRONGLY POSITIVE",1:"POSITIVE",0:"NEUTRAL",-1:"NEGATIVE",-2:"STRONGLY NEGATIVE"}.get(score,"NOT VERIFIED")
+
+
+def _component_summaries(
+    *,
+    scores: Mapping[str, Optional[int]],
+    tech: Mapping[str, object],
+    income: Optional[Mapping],
+    ratios: Optional[Mapping],
+    holdings: Optional[Mapping],
+    news: Optional[Mapping],
+) -> Mapping[str, tuple[str, str]]:
+    summaries: dict[str, tuple[str,str]] = {}
+    for key, score in scores.items():
+        if score is None:
+            summaries[key] = ("NOT VERIFIED", "Required structured evidence was unavailable or insufficient; no interpretation inferred.")
+        else:
+            summaries[key] = (_score_label(score), f"Verified structured evidence produced governed component score {score:+d}.")
+    if scores.get("PRICE_STRUCTURE") is not None:
+        summaries["PRICE_STRUCTURE"] = (
+            _score_label(scores["PRICE_STRUCTURE"]),
+            f"Price structure is {_score_label(scores['PRICE_STRUCTURE']).lower()} under the frozen trend rules; latest structure pattern is {tech.get('pattern_name','N/A')}."
+        )
+    if scores.get("SPECIFIC_CHART_PATTERN") is not None:
+        summaries["SPECIFIC_CHART_PATTERN"] = (
+            str(tech.get("pattern_name","N/A")),
+            f"Verified daily candles classify the active pattern as {tech.get('pattern_name','N/A')} with governed score {int(scores['SPECIFIC_CHART_PATTERN']):+d}."
+        )
+    if scores.get("PV_PVPO") is not None:
+        summaries["PV_PVPO"] = (
+            _score_label(scores["PV_PVPO"]),
+            f"Price-volume confirmation produced governed score {int(scores['PV_PVPO']):+d}; options OI is used only as confirmation when available."
+        )
+    if scores.get("RELATIVE_STRENGTH") is not None:
+        summaries["RELATIVE_STRENGTH"] = (
+            _score_label(scores["RELATIVE_STRENGTH"]),
+            f"Relative performance versus Nifty 50 produced governed score {int(scores['RELATIVE_STRENGTH']):+d}."
+        )
+    if scores.get("BUSINESS_FUNDAMENTALS") is not None:
+        summaries["BUSINESS_FUNDAMENTALS"] = (
+            _score_label(scores["BUSINESS_FUNDAMENTALS"]),
+            f"Verified income-statement growth evidence produced governed fundamentals score {int(scores['BUSINESS_FUNDAMENTALS']):+d}."
+        )
+    if scores.get("VALUATION") is not None:
+        summaries["VALUATION"] = (
+            _score_label(scores["VALUATION"]),
+            f"Verified company-versus-sector valuation ratios produced governed valuation score {int(scores['VALUATION']):+d}."
+        )
+    if scores.get("INSTITUTIONAL_BEHAVIOUR") is not None:
+        summaries["INSTITUTIONAL_BEHAVIOUR"] = (
+            _score_label(scores["INSTITUTIONAL_BEHAVIOUR"]),
+            f"Verified FII / mutual-fund / DII holding changes produced governed institutional score {int(scores['INSTITUTIONAL_BEHAVIOUR']):+d}."
+        )
+    if scores.get("NEWS_EVENTS_CATALYSTS") is not None:
+        summaries["NEWS_EVENTS_CATALYSTS"] = (
+            _score_label(scores["NEWS_EVENTS_CATALYSTS"]),
+            f"Verified recent-news catalyst classification produced governed score {int(scores['NEWS_EVENTS_CATALYSTS']):+d}; keyword evidence is not allowed to infer severe O2/O3 overrides."
+        )
+    if scores.get("EVENT_SHOCK") is not None:
+        summaries["EVENT_SHOCK"] = (
+            "CAUTION" if scores["EVENT_SHOCK"] < 0 else "NO MATERIAL SHOCK FLAG",
+            f"Verified event-risk screen produced governed score {int(scores['EVENT_SHOCK']):+d}; severe override escalation is not inferred from keywords alone."
+        )
+    return summaries
+
+
 class ConservativeAutonomousInterpreter:
     """Deterministic interpreter suitable for shadow validation.
 
@@ -441,6 +509,8 @@ class ConservativeAutonomousInterpreter:
         pv_quality = {2:90,1:75,0:60,-1:75,-2:90}[tech["PV_PVPO"]]
         catalyst_asymmetry = max(0.0,min(100.0,50.0 + 20.0*catalyst))
 
+        summaries=_component_summaries(scores=scores,tech=tech,income=income,ratios=ratios,holdings=holdings,news=news)
+
         return AnalystInterpretation(
             component_scores=rows,
             evidence_quality_score=_quality_score(evidence),
@@ -457,4 +527,5 @@ class ConservativeAutonomousInterpreter:
             definitive_recommendation="SHADOW ONLY — production action not released.",
             zone_context=derive_structure_context(stock_daily, pattern_name=tech["pattern_name"]),
             event_override=override,
+            component_summaries=summaries,
         )

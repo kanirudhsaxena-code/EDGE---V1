@@ -153,7 +153,7 @@ def build_production_candidate(
         rationale="Autonomous governed EDGE V1 production candidate.",
     )
     canonical=build_canonical_bundle(shadow,metadata)
-    report=render_standard_edge_report(canonical,assessment)
+    report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)
 
     if not publish:
         return ProductionCandidateResult(

@@ -63,8 +63,11 @@ class AutonomousEvidenceAcquirer:
             options_decision_requested=options_decision_requested,
         )
         observations = list(market.observations)
+        payloads = dict(market.payloads)
         for provider in self._research:
-            observations.extend(provider.collect(ticker.strip().upper(), run_at))
+            research = provider.collect(ticker.strip().upper(), run_at)
+            observations.extend(research.observations)
+            payloads.update(research.payloads)
 
         evidence = tuple(_to_evidence(item) for item in observations)
         gate = validate_fresh_evidence(
@@ -77,6 +80,6 @@ class AutonomousEvidenceAcquirer:
             ticker=ticker.strip().upper(),
             instrument_key=market.instrument_key,
             evidence=evidence,
-            payloads=market.payloads,
+            payloads=payloads,
             gate=gate,
         )

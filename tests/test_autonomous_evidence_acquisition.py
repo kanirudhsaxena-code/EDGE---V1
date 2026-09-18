@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 
 from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
-from src.market_providers import ProviderObservation, UpstoxReadOnlyStockProvider
+from src.market_providers import ProviderObservation, ResearchAcquisition, UpstoxReadOnlyStockProvider
 
 
 RUN_AT = datetime(2026, 9, 18, 4, 0, tzinfo=timezone.utc)
@@ -70,11 +70,12 @@ class FakeOpener:
 
 class Research:
     def collect(self, ticker, run_at):
-        return [
+        rows = (
             ProviderObservation("NEWS_EVENTS_CATALYSTS",ticker,run_at,"web:news",True,"WEB","NEWS"),
             ProviderObservation("BUSINESS_FUNDAMENTALS",ticker,run_at,"web:fund",True,"WEB","FUND"),
             ProviderObservation("EVENT_SHOCK",ticker,run_at,"web:event",True,"WEB","EVENT"),
-        ]
+        )
+        return ResearchAcquisition(rows, {"web:news":{"ok":True},"web:fund":{"ok":True},"web:event":{"ok":True}})
 
 
 def provider(include_chain=True):

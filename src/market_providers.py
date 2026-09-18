@@ -81,8 +81,14 @@ class MarketAcquisition:
     instrument_key: str
 
 
+@dataclass(frozen=True)
+class ResearchAcquisition:
+    observations: tuple[ProviderObservation, ...]
+    payloads: Mapping[str, Mapping[str, Any]]
+
+
 class ResearchProvider(Protocol):
-    def collect(self, ticker: str, run_at: datetime) -> Sequence[ProviderObservation]: ...
+    def collect(self, ticker: str, run_at: datetime) -> ResearchAcquisition: ...
 
 
 class UpstoxReadOnlyStockProvider:
@@ -135,7 +141,7 @@ class UpstoxReadOnlyStockProvider:
                 received = datetime.now(timezone.utc)
                 digest = hashlib.sha256(raw).hexdigest()
                 return ProviderEnvelope(
-                    source_ref=f"upstox:{path}#sha256={digest}",
+                    source_ref=f"upstox:{path}" + (f"?{urlencode(sorted(params.items()))}" if params else "") + f"#sha256={digest}",
                     received_at=received,
                     path=path,
                     parameters=params,

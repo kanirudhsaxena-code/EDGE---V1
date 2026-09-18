@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# resolved-instrument-key diagnostic rerun
+# resilient benchmark/macro quote validation rerun
 
 on:
   workflow_dispatch:

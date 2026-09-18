@@ -40,6 +40,10 @@ class Opener:
             payload={"status":"success","data":{"company_profile":"NBFC"}}
         elif "/income-statement" in url:
             payload={"status":"success","data":[{"period":"Q1"}]}
+        elif "/balance-sheet" in url:
+            payload={"status":"success","data":{"balance_sheet":[]}}
+        elif "/cash-flow" in url:
+            payload={"status":"success","data":{"cash_flow":[]}}
         elif "/share-holdings" in url:
             payload={"status":"success","data":[{"holder":"FII"}]}
         elif "/key-ratios" in url:
@@ -64,7 +68,7 @@ def test_research_provider_covers_core_and_optional_research_categories():
         "INSTITUTIONAL_BEHAVIOUR",
         "VALUATION",
     } <= cats
-    assert len(result.payloads) == 8
+    assert len(result.payloads) == 10
 
 
 def test_research_provider_is_read_only():

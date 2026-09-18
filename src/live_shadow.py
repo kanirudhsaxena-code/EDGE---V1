@@ -81,6 +81,23 @@ def run_live_shadow(ticker: str, token: str, run_at: datetime | None = None) -> 
         ],
         "recommendation": result.recommendation.definitive_recommendation,
         "evidence_count": len(bundle.evidence),
+        "shadow_diagnostics": {
+            "component_raw_scores": {
+                row.component: row.raw_score for row in result.component_scores
+            },
+            "component_verified": {
+                row.component: row.verified for row in result.component_scores
+            },
+            "evidence_quality_score": round(result.evidence_quality_score, 3),
+            "freshness_score": round(result.freshness_score, 3),
+            "completeness_score": round(result.completeness_score, 3),
+            "market_confirmation_score": round(result.market_confirmation_score, 3),
+            "structure_pattern_quality": round(result.structure_pattern_quality, 3),
+            "pv_pvpo_confirmation": round(result.pv_pvpo_confirmation, 3),
+            "catalyst_asymmetry": round(result.catalyst_asymmetry, 3),
+            "execution_quality": round(result.execution_quality, 3),
+            "event_override": result.event_override,
+        },
         "publishing_enabled": False,
         "trading_enabled": False,
     }

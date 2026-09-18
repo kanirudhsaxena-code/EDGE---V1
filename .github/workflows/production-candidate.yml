@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 12
     env:
       PYTHONPATH: .
-      EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
+      EDGE_TICKER: ${{ inputs.ticker || 'CUPID' }}
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}

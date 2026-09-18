@@ -81,11 +81,12 @@ def build_production_candidate(
     company_name: Optional[str]=None,
     publish: bool=False,
     release_approval: Optional[ReleaseApproval]=None,
+    historical_cache: Any=None,
 ) -> ProductionCandidateResult:
     if run_at.tzinfo is None:
         raise ValueError("run_at must be timezone-aware")
 
-    market=UpstoxReadOnlyStockProvider(upstox_token)
+    market=UpstoxReadOnlyStockProvider(upstox_token,historical_cache=historical_cache)
     research=UpstoxReadOnlyResearchProvider(upstox_token)
 
     # Canonical efficacy is assessed first. Only overdue checkpoints are captured;

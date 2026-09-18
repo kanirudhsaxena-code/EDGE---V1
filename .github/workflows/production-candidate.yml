@@ -1,5 +1,5 @@
 name: EDGE Production Candidate
-# one-shot live EDGE LTF intraday run
+# one-shot live EDGE LTF intraday report
 
 on:
   push:
@@ -42,6 +42,8 @@ jobs:
         run: |
           set -o pipefail
           python -m src.production_candidate_cli | tee edge-production-candidate.json
+      - name: Print exact two-table report
+        run: cat edge-production-candidate-report.md
       - name: Upload bounded candidate artifacts
         if: always()
         uses: actions/upload-artifact@v4

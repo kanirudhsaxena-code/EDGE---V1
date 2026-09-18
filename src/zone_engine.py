@@ -109,49 +109,62 @@ def expected_price_zone(
 
     c=ctx.close
     mtr=ctx.median_true_range
-    support=ctx.supports[0] if ctx.supports else None
-    resistance=ctx.resistances[0] if ctx.resistances else None
-    next_support=ctx.supports[1] if len(ctx.supports)>1 else None
-    next_resistance=ctx.resistances[1] if len(ctx.resistances)>1 else None
+    if c <= 0 or mtr <= 0:
+        raise ValueError("invalid market structure context")
 
-    # Small volatility tolerance around a visible objective prevents fabricated
-    # point precision while staying anchored to real structure.
-    band=max(0.30*mtr, c*0.003)
+    # EDGE stores direction and expected price zone separately. Historical LTF
+    # calls show that a bearish or bullish forecast can still use a two-sided
+    # expected zone around the current market state. Therefore the implementation
+    # starts from the observed recent range (one median true range either side of
+    # the close) and then lets material nearby structure refine/extend that range.
+    baseline_low=c-mtr
+    baseline_high=c+mtr
 
-    if f=="BASE_RANGE":
-        if support is None or resistance is None:
-            raise ValueError("base/range zone requires verified support and resistance")
-        low=support-band
-        high=resistance+band
-        basis="NEAREST_SUPPORT_RESISTANCE"
-    elif f=="BULLISH":
-        if resistance is None:
-            raise ValueError("bullish zone requires verified resistance/objective")
-        objective2=next_resistance if next_resistance is not None else resistance
-        low=max(c, resistance-band)
-        high=max(low+band, objective2+band)
-        basis="NEAREST_AND_SECONDARY_RESISTANCE"
-    else:
-        if support is None:
-            raise ValueError("bearish zone requires verified support/objective")
-        objective2=next_support if next_support is not None else support
-        low=min(objective2-band, support-band)
-        high=min(c, support+band)
-        basis="NEAREST_AND_SECONDARY_SUPPORT"
+    min_material_distance=0.50*mtr
+    max_material_distance=1.75*mtr
+    extension=max(0.20*mtr, c*0.003)
 
-    low=max(0.01, float(low))
-    high=max(low, float(high))
-    width_pct=(high-low)/c*100.0 if c else 0.0
+    def material_support() -> Optional[float]:
+        for level in ctx.supports:
+            distance=c-level
+            if min_material_distance <= distance <= max_material_distance:
+                return level
+        return None
 
-    # Fail closed on obviously non-compact zones. This is an implementation
-    # guard, not a frozen scoring rule.
+    def material_resistance() -> Optional[float]:
+        for level in ctx.resistances:
+            distance=level-c
+            if min_material_distance <= distance <= max_material_distance:
+                return level
+        return None
+
+    support=material_support()
+    resistance=material_resistance()
+
+    # Keep the baseline volatility envelope unless nearby visible structure gives
+    # a more useful boundary. Support can tighten the lower edge; resistance can
+    # extend the upper edge when the next credible objective sits just beyond the
+    # one-range baseline. These are implementation heuristics under validation,
+    # not changes to the frozen EDGE scoring/probability model.
+    low=max(0.01, baseline_low)
+    if support is not None:
+        low=max(low, support)
+
+    high=baseline_high
+    if resistance is not None:
+        high=max(high, resistance+extension)
+
+    if high <= low:
+        raise ValueError("expected zone collapsed after structure refinement")
+
+    width_pct=(high-low)/c*100.0
     if width_pct > 12.0:
         raise ValueError("structure-derived expected zone is too broad for release validation")
 
     return ExpectedZoneResult(
-        low=low,
-        high=high,
-        basis=basis,
+        low=float(low),
+        high=float(high),
+        basis="VOLATILITY_STRUCTURE_ENVELOPE",
         support_used=support,
         resistance_used=resistance,
         width_pct=width_pct,

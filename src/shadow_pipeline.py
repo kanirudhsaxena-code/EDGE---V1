@@ -46,6 +46,7 @@ class AnalystInterpretation:
     definitive_recommendation: str
     zone_context: Optional[MarketStructureContext] = None
     event_override: Optional[str] = None
+    component_summaries: Optional[Mapping[str, tuple[str, str]]] = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ class ShadowComputation:
     zone_basis: Optional[str]
     zone_width_pct: Optional[float]
     recommendation: RecommendationEnvelope
+    component_summaries: Mapping[str, tuple[str, str]]
 
 
 EvidenceAnalyst = Callable[
@@ -188,4 +190,5 @@ def compute_shadow_recommendation(
         zone_basis=zone_basis,
         zone_width_pct=zone_width_pct,
         recommendation=recommendation,
+        component_summaries=dict(interpreted.component_summaries or {}),
     )

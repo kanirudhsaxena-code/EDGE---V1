@@ -81,8 +81,14 @@ class MarketAcquisition:
     instrument_key: str
 
 
+@dataclass(frozen=True)
+class ResearchAcquisition:
+    observations: tuple[ProviderObservation, ...]
+    payloads: Mapping[str, Mapping[str, Any]]
+
+
 class ResearchProvider(Protocol):
-    def collect(self, ticker: str, run_at: datetime) -> Sequence[ProviderObservation]: ...
+    def collect(self, ticker: str, run_at: datetime) -> ResearchAcquisition: ...
 
 
 class UpstoxReadOnlyStockProvider:

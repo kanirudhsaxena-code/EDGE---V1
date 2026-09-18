@@ -1,5 +1,5 @@
 name: EDGE Production Candidate
-# secret-validation rerun
+# state-recovery validation rerun
 
 on:
   workflow_dispatch:

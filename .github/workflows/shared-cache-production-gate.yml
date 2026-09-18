@@ -1,0 +1,36 @@
+name: EDGE Shared Cache Production Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/cache_validation_cli.py'
+      - '.github/workflows/shared-cache-production-gate.yml'
+      - 'runtime/shared_cache_validation_trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      EDGE_CACHE_VALIDATION_TICKER: LTF
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Run cache seed and readback gate
+        run: |
+          set -o pipefail
+          python -m src.cache_validation_cli | tee edge-shared-cache-gate.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-shared-cache-production-gate
+          path: edge-shared-cache-gate.json
+          retention-days: 30

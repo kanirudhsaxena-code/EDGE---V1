@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 from typing import Any, Mapping, Optional
@@ -19,6 +20,7 @@ from src.market_providers import ProviderEnvelope
 CACHE_SCHEMA = "market-cache-document-v1"
 PROVIDER_ID = "UPSTOX"
 SOURCE_SEMANTIC = "UPSTOX_AUTHENTICATED"
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def _json_sha(value: Any) -> str:
@@ -37,6 +39,10 @@ def _timestamp(value: Any) -> datetime:
     if result.tzinfo is None:
         raise ValueError("historical cache timestamp must be timezone-aware")
     return result.astimezone(timezone.utc)
+
+
+def _session_date(value: Any) -> date:
+    return _timestamp(value).astimezone(IST).date()
 
 
 def _record_from_candle(candle: list[Any]) -> dict[str, Any]:
@@ -137,12 +143,12 @@ class PostgresHistoricalCache:
         records = doc.get("records") or []
         selected = [
             row for row in records
-            if start <= _timestamp(row["timestamp"]).date() <= end
+            if start <= _session_date(row["timestamp"]) <= end
         ]
         if not selected:
             return None
-        earliest = min(_timestamp(row["timestamp"]).date() for row in records)
-        latest = max(_timestamp(row["timestamp"]).date() for row in records)
+        earliest = min(_session_date(row["timestamp"]) for row in records)
+        latest = max(_session_date(row["timestamp"]) for row in records)
         if earliest > start or latest < end:
             return None
         return ProviderEnvelope(

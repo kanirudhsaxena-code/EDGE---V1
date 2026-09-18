@@ -7,6 +7,11 @@ on:
         description: "NSE trading symbol"
         required: true
         default: "LTF"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/live-shadow.yml"
 
 permissions:
   contents: read
@@ -17,7 +22,7 @@ jobs:
     timeout-minutes: 10
     env:
       PYTHONPATH: .
-      EDGE_TICKER: ${{ inputs.ticker }}
+      EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
     steps:
       - uses: actions/checkout@v4

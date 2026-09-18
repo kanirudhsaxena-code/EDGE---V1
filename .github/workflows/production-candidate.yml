@@ -1,13 +1,18 @@
 name: EDGE Production Candidate
-# manual production-candidate validation
+# one-shot live EDGE HAL master-spec run
 
 on:
+  push:
+    branches:
+      - "ops/live-edge-hal-now"
+    paths:
+      - ".github/workflows/production-candidate.yml"
   workflow_dispatch:
     inputs:
       ticker:
         description: "NSE trading symbol"
         required: true
-        default: "LTF"
+        default: "HAL"
       holding_state:
         description: "UNKNOWN, HOLDS, or NO_HOLDING"
         required: true
@@ -22,7 +27,7 @@ jobs:
     timeout-minutes: 12
     env:
       PYTHONPATH: .
-      EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
+      EDGE_TICKER: ${{ inputs.ticker || 'HAL' }}
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -37,6 +42,8 @@ jobs:
         run: |
           set -o pipefail
           python -m src.production_candidate_cli | tee edge-production-candidate.json
+      - name: Print exact master-spec report
+        run: cat edge-production-candidate-report.md
       - name: Upload bounded candidate artifacts
         if: always()
         uses: actions/upload-artifact@v4

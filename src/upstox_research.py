@@ -51,6 +51,7 @@ class UpstoxReadOnlyResearchProvider:
             "/v2/instruments/search",
             "/v2/news",
             "/v2/market-quote/quotes",
+            "/v3/market-quote/quotes",
         }
         allowed_prefixes = ("/v2/fundamentals/",)
         if path not in allowed_exact and not any(path.startswith(p) for p in allowed_prefixes):
@@ -159,8 +160,8 @@ class UpstoxReadOnlyResearchProvider:
         holdings = self._get(f"/v2/fundamentals/{isin}/share-holdings")
         ratios = self._get(f"/v2/fundamentals/{isin}/key-ratios")
         actions = self._get(f"/v2/fundamentals/{isin}/corporate-actions")
-        vix = self._get("/v2/market-quote/quotes", {"instrument_key": INDIA_VIX})
-        brent = self._get("/v2/market-quote/quotes", {"instrument_key": BRENT})
+        vix = self._get("/v3/market-quote/quotes", {"instrument_key": INDIA_VIX})
+        brent = self._get("/v3/market-quote/quotes", {"instrument_key": BRENT})
 
         payloads = {
             env.source_ref: env.payload

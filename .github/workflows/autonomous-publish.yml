@@ -1,5 +1,5 @@
 name: EDGE Autonomous Publish
-# one-shot activation validation
+# activation validation rerun after evidence-ref fix
 
 on:
   workflow_dispatch:

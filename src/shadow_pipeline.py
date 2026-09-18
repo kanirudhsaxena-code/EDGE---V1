@@ -17,6 +17,7 @@ from typing import Callable, Mapping, Optional, Sequence
 from src.autonomous_evidence_acquisition import AcquiredEvidenceBundle
 from src.autonomous_runner import RecommendationEnvelope
 from src.evidence_gate import EvidenceItem
+from src.zone_engine import MarketStructureContext, expected_price_zone
 from src.frozen_engine import (
     BotInputs,
     ComponentInput,
@@ -43,6 +44,7 @@ class AnalystInterpretation:
     expected_price_zone_high: Optional[float]
     horizon_trading_days: int
     definitive_recommendation: str
+    zone_context: Optional[MarketStructureContext] = None
     event_override: Optional[str] = None
 
 
@@ -70,6 +72,8 @@ class ShadowComputation:
     catalyst_asymmetry: float
     execution_quality: float
     event_override: Optional[str]
+    zone_basis: Optional[str]
+    zone_width_pct: Optional[float]
     recommendation: RecommendationEnvelope
 
 
@@ -122,6 +126,15 @@ def compute_shadow_recommendation(
         trust_result.score,
         override=interpreted.event_override,
     )
+
+    zone_basis = None
+    zone_width_pct = None
+    if interpreted.zone_context is not None:
+        zone = expected_price_zone(interpreted.zone_context, prob.definitive_forecast)
+        low, high = zone.low, zone.high
+        zone_basis = zone.basis
+        zone_width_pct = zone.width_pct
+
     leading = max(prob.bull, prob.base, prob.bear)
     bot = bot_hunter(
         BotInputs(
@@ -172,5 +185,7 @@ def compute_shadow_recommendation(
         catalyst_asymmetry=interpreted.catalyst_asymmetry,
         execution_quality=interpreted.execution_quality,
         event_override=interpreted.event_override,
+        zone_basis=zone_basis,
+        zone_width_pct=zone_width_pct,
         recommendation=recommendation,
     )

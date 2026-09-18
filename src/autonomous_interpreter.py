@@ -21,6 +21,7 @@ from typing import Iterable, Mapping, Optional, Sequence
 from src.evidence_gate import EvidenceItem
 from src.frozen_engine import ComponentInput, COMPONENT_WEIGHTS
 from src.shadow_pipeline import AnalystInterpretation
+from src.zone_engine import derive_structure_context
 
 
 def _payloads_matching(payloads: Mapping[str, Mapping], needle: str) -> list[Mapping]:
@@ -450,9 +451,10 @@ class ConservativeAutonomousInterpreter:
             pv_pvpo_confirmation=pv_quality,
             catalyst_asymmetry=catalyst_asymmetry,
             execution_quality=60.0,
-            expected_price_zone_low=tech["zone_low"],
-            expected_price_zone_high=tech["zone_high"],
+            expected_price_zone_low=None,
+            expected_price_zone_high=None,
             horizon_trading_days=5,
             definitive_recommendation="SHADOW ONLY — production action not released.",
+            zone_context=derive_structure_context(stock_daily, pattern_name=tech["pattern_name"]),
             event_override=override,
         )

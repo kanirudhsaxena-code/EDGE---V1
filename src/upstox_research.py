@@ -25,6 +25,7 @@ from src.market_providers import (
     ResearchAcquisition,
     UPSTOX_BASE,
     _stage_label,
+    _upstox_error_code,
 )
 
 INDIA_VIX = "NSE_INDEX|India VIX"
@@ -87,7 +88,7 @@ class UpstoxReadOnlyResearchProvider:
                 )
             except HTTPError as exc:
                 if exc.code in (401, 403):
-                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}_{_upstox_error_code(exc)}") from None
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
                     raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
                 self._sleep(2 ** (attempt + 1))

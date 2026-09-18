@@ -1,5 +1,5 @@
 name: EDGE Autonomous Publish
-# activation validation rerun after component-quality fix
+# manual governed autonomous publishing
 
 on:
   workflow_dispatch:
@@ -12,11 +12,6 @@ on:
         description: "UNKNOWN, HOLDS, or NO_HOLDING"
         required: true
         default: "UNKNOWN"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/autonomous-publish.yml"
 
 permissions:
   contents: read

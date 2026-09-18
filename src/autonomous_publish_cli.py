@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider, safe_diagnostic
+from src.historical_cache import PostgresHistoricalCache
 from src.trading_calendar import is_nse_trading_day
 
 from src.production_orchestrator import HoldingState, build_production_candidate
@@ -153,6 +154,7 @@ def main() -> int:
             },sort_keys=True))
             return 0
 
+        historical_cache=PostgresHistoricalCache(db_url)
         result=build_production_candidate(
             connection=conn,
             ticker=ticker,
@@ -160,6 +162,7 @@ def main() -> int:
             upstox_token=token,
             holding_state=holding,
             publish=True,
+            historical_cache=historical_cache,
             release_approval=ReleaseApproval(
                 shadow_validation_accepted=True,
                 zone_method_validated=True,

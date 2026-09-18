@@ -1,13 +1,18 @@
 name: EDGE Production Candidate
-# manual production-candidate validation
+# one-shot live EDGE CUPID master-spec run
 
 on:
+  push:
+    branches:
+      - "ops/live-edge-cupid-now"
+    paths:
+      - ".github/workflows/production-candidate.yml"
   workflow_dispatch:
     inputs:
       ticker:
         description: "NSE trading symbol"
         required: true
-        default: "LTF"
+        default: "CUPID"
       holding_state:
         description: "UNKNOWN, HOLDS, or NO_HOLDING"
         required: true
@@ -37,6 +42,8 @@ jobs:
         run: |
           set -o pipefail
           python -m src.production_candidate_cli | tee edge-production-candidate.json
+      - name: Print exact master-spec report
+        run: cat edge-production-candidate-report.md
       - name: Upload bounded candidate artifacts
         if: always()
         uses: actions/upload-artifact@v4

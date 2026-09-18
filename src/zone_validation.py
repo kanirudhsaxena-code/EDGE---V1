@@ -75,6 +75,10 @@ def run(token: str) -> dict:
                 "basis":zone.basis,
                 "width_pct":round(zone.width_pct,3),
                 "status":"SCORABLE",
+                "close":round(ctx.close,3),
+                "supports":[round(x,3) for x in ctx.supports[:5]],
+                "resistances":[round(x,3) for x in ctx.resistances[:5]],
+                "median_true_range":round(ctx.median_true_range,3),
                 **_metrics(proposed,case["manual_zone"]),
             })
         except ValueError as exc:

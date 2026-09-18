@@ -24,6 +24,7 @@ from src.market_providers import (
     ProviderObservation,
     ResearchAcquisition,
     UPSTOX_BASE,
+    _stage_label,
 )
 
 INDIA_VIX = "NSE_INDEX|India VIX"
@@ -71,10 +72,10 @@ class UpstoxReadOnlyResearchProvider:
                     raw = response.read(8_000_001)
                     final_url = response.geturl()
                 if final_url != url or len(raw) > 8_000_000 or not raw:
-                    raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+                    raise AcquisitionError(f"SCHEMA_{_stage_label(path)}")
                 payload = json.loads(raw)
                 if not isinstance(payload, dict) or payload.get("status") != "success":
-                    raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+                    raise AcquisitionError(f"SCHEMA_{_stage_label(path)}")
                 digest = hashlib.sha256(raw).hexdigest()
                 return ProviderEnvelope(
                     source_ref=f"upstox:{path}" + (f"?{urlencode(sorted(params.items()))}" if params else "") + f"#sha256={digest}",
@@ -85,17 +86,17 @@ class UpstoxReadOnlyResearchProvider:
                 )
             except HTTPError as exc:
                 if exc.code in (401, 403):
-                    raise AcquisitionError("AUTH_REJECTED") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                    raise AcquisitionError("NETWORK_FAILED") from None
+                    raise AcquisitionError(f"HTTP_{_stage_label(path)}_{exc.code}") from None
                 self._sleep(2 ** (attempt + 1))
             except (URLError, TimeoutError, OSError):
                 if attempt == 2:
-                    raise AcquisitionError("NETWORK_FAILED") from None
+                    raise AcquisitionError(f"NETWORK_{_stage_label(path)}") from None
                 self._sleep(2 ** (attempt + 1))
             except (ValueError, UnicodeError):
-                raise AcquisitionError("INVALID_JSON") from None
-        raise AcquisitionError("NETWORK_FAILED")
+                raise AcquisitionError(f"JSON_{_stage_label(path)}") from None
+        raise AcquisitionError(f"NETWORK_{_stage_label(path)}")
 
     def _resolve(self, ticker: str) -> tuple[str, str]:
         symbol = ticker.strip().upper()

@@ -163,6 +163,7 @@ class UpstoxReadOnlyStockProvider:
             "/v2/instruments/search",
             "/v2/market-quote/quotes",
             "/v3/market-quote/quotes",
+            "/v2/market/holidays",
             "/v2/option/contract",
             "/v2/option/chain",
         }
@@ -265,6 +266,9 @@ class UpstoxReadOnlyStockProvider:
         return self._get(
             f"/v3/historical-candle/{key}/days/1/{end.isoformat()}/{start.isoformat()}"
         )
+
+    def market_holidays(self) -> ProviderEnvelope:
+        return self._get("/v2/market/holidays")
 
     def option_contracts(self, instrument_key: str) -> ProviderEnvelope:
         return self._get("/v2/option/contract", {"instrument_key": instrument_key})

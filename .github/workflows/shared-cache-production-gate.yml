@@ -25,7 +25,9 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install "psycopg[binary]>=3.2,<4"
       - name: Run cache seed and readback gate
-        run: python -m src.cache_validation_cli | tee edge-shared-cache-gate.json
+        run: |
+          set -o pipefail
+          python -m src.cache_validation_cli | tee edge-shared-cache-gate.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -22,6 +22,22 @@ def run_live_shadow(ticker: str, token: str, run_at: datetime | None = None) -> 
     run_at = run_at or datetime.now(timezone.utc)
     market = UpstoxReadOnlyStockProvider(token)
     research = UpstoxReadOnlyResearchProvider(token)
+
+    resolved_key, _ = market.resolve_nse_equity(ticker)
+    try:
+        market.quote(resolved_key)
+    except AcquisitionError as exc:
+        return {
+            "status": "SHADOW_BLOCKED_ACQUISITION",
+            "ticker": ticker.upper(),
+            "run_timestamp": run_at.isoformat(),
+            "diagnostic_code": safe_diagnostic(exc),
+            "resolved_instrument_key": resolved_key,
+            "preflight_stage": "STOCK_MARKET_QUOTE",
+            "publishing_enabled": False,
+            "trading_enabled": False,
+        }
+
     bundle = AutonomousEvidenceAcquirer(market, [research]).acquire(
         ticker,
         run_at,
@@ -74,7 +90,10 @@ if __name__ == "__main__":
     ticker = os.getenv("EDGE_TICKER", "LTF").strip().upper()
     token = os.getenv("UPSTOX_ANALYTICS_TOKEN", "")
     try:
-        print(json.dumps(run_live_shadow(ticker, token), sort_keys=True))
+        result = run_live_shadow(ticker, token)
+        print(json.dumps(result, sort_keys=True))
+        if str(result.get("status", "")).startswith("SHADOW_BLOCKED"):
+            raise SystemExit(2)
     except AcquisitionError as exc:
         print(json.dumps({
             "status": "SHADOW_BLOCKED_ACQUISITION",

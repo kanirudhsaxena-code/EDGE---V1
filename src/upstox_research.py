@@ -62,6 +62,7 @@ class UpstoxReadOnlyResearchProvider:
                 url,
                 headers={
                     "Accept": "application/json",
+                    "Content-Type": "application/json",
                     "Authorization": "Bearer " + self._token,
                     "User-Agent": "EDGE-Stocks-Readonly-Research/1.0",
                 },

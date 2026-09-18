@@ -15,6 +15,9 @@ import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider, safe_diagnostic
+from src.trading_calendar import is_nse_trading_day
+
 from src.production_orchestrator import HoldingState, build_production_candidate
 from src.release_gate import ReleaseApproval
 
@@ -87,10 +90,45 @@ def main() -> int:
 
     import psycopg
 
+    now=datetime.now(timezone.utc)
+    india_now=now.astimezone(ZoneInfo("Asia/Kolkata"))
+    india_date=india_now.date()
+
+    if india_now.time().hour < 15 or (
+        india_now.time().hour == 15 and india_now.time().minute < 40
+    ):
+        print(json.dumps({
+            "status":"BEFORE_MARKET_CLOSE",
+            "ticker":ticker,
+            "india_time":india_now.isoformat(),
+            "publishing_enabled":True,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 0
+
+    try:
+        provider=UpstoxReadOnlyStockProvider(token)
+        if not is_nse_trading_day(provider,india_date):
+            print(json.dumps({
+                "status":"NON_TRADING_DAY",
+                "ticker":ticker,
+                "india_date":india_date.isoformat(),
+                "publishing_enabled":True,
+                "trading_enabled":False,
+            },sort_keys=True))
+            return 0
+    except AcquisitionError as exc:
+        print(json.dumps({
+            "status":"BLOCKED_CONFIGURATION",
+            "ticker":ticker,
+            "diagnostic_code":safe_diagnostic(exc),
+            "publishing_enabled":False,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 2
+
     conn=psycopg.connect(db_url)
     try:
-        now=datetime.now(timezone.utc)
-        india_date=now.astimezone(ZoneInfo("Asia/Kolkata")).date()
         with conn.cursor() as cur:
             cur.execute(
                 """

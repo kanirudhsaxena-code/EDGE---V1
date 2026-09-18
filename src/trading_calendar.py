@@ -72,3 +72,14 @@ def fetch_next_five_nse_trading_dates(
     holidays=parse_nse_trading_holidays(env.payload)
     rows=next_nse_trading_dates(start_after,holidays,count=5)
     return (rows[0],rows[1],rows[2],rows[3],rows[4])
+
+
+def is_nse_trading_day(
+    provider: UpstoxReadOnlyStockProvider,
+    day: date,
+) -> bool:
+    if day.weekday() >= 5:
+        return False
+    env=provider.market_holidays()
+    holidays=parse_nse_trading_holidays(env.payload)
+    return day not in holidays

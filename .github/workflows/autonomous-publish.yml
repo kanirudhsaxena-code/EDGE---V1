@@ -2,6 +2,8 @@ name: EDGE Autonomous Publish
 # manual governed autonomous publishing
 
 on:
+  schedule:
+    - cron: "45 10 * * 1-5"
   workflow_dispatch:
     inputs:
       ticker:
@@ -24,6 +26,7 @@ jobs:
       PYTHONPATH: .
       EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
+      EDGE_RUN_MODE: ${{ github.event_name == 'schedule' && 'SCHEDULED' || 'MANUAL' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

@@ -1,0 +1,53 @@
+name: EDGE Production Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "NSE trading symbol"
+        required: true
+        default: "LTF"
+      holding_state:
+        description: "UNKNOWN, HOLDS, or NO_HOLDING"
+        required: true
+        default: "UNKNOWN"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/production-candidate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: .
+      EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
+      EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Run non-publishing production candidate
+        run: |
+          set -o pipefail
+          python -m src.production_candidate_cli | tee edge-production-candidate.json
+      - name: Upload bounded candidate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-production-candidate
+          path: |
+            edge-production-candidate.json
+            edge-production-candidate-report.md
+          if-no-files-found: ignore
+          retention-days: 7

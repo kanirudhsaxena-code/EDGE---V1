@@ -1,5 +1,5 @@
 name: EDGE Production Candidate
-# state-recovery validation rerun
+# manual production-candidate validation
 
 on:
   workflow_dispatch:
@@ -12,11 +12,6 @@ on:
         description: "UNKNOWN, HOLDS, or NO_HOLDING"
         required: true
         default: "UNKNOWN"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/production-candidate.yml"
 
 permissions:
   contents: read

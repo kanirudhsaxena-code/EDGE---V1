@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# one-shot historical zone replay
+# corrected historical zone replay
 
 on:
   workflow_dispatch:
@@ -36,6 +36,7 @@ jobs:
           python -m src.live_shadow | tee edge-shadow-result.json
       - name: Run historical structure-zone validation
         run: |
+          set -o pipefail
           python -m src.zone_validation | tee edge-zone-validation.json
       - name: Upload bounded shadow result
         if: always()

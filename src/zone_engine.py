@@ -44,7 +44,7 @@ def derive_structure_context(
     candles: Sequence[list],
     *,
     pattern_name: str,
-    lookback: int = 60,
+    lookback: int = 120,
 ) -> MarketStructureContext:
     if len(candles) < 12:
         raise ValueError("at least 12 daily candles required for structure zone")

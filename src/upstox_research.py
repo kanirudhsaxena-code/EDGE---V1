@@ -77,7 +77,7 @@ class UpstoxReadOnlyResearchProvider:
                     raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
                 digest = hashlib.sha256(raw).hexdigest()
                 return ProviderEnvelope(
-                    source_ref=f"upstox:{path}#sha256={digest}",
+                    source_ref=f"upstox:{path}" + (f"?{urlencode(sorted(params.items()))}" if params else "") + f"#sha256={digest}",
                     received_at=datetime.now(timezone.utc),
                     path=path,
                     parameters=params,

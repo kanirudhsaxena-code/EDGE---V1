@@ -9,10 +9,13 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 
 from src.historical_cache import PostgresHistoricalCache
 from src.market_providers import NIFTY_50, UpstoxReadOnlyStockProvider
+
+IST=ZoneInfo("Asia/Kolkata")
 
 
 class NetworkForbidden:
@@ -32,7 +35,7 @@ def _candle_dates(envelope):
         stamp=datetime.fromisoformat(str(row[0]).replace("Z","+00:00"))
         if stamp.tzinfo is None:
             raise RuntimeError("validation candle timestamp naive")
-        dates.append(stamp.date())
+        dates.append(stamp.astimezone(IST).date())
     if not dates:
         raise RuntimeError("validation candle dates missing")
     return min(dates),max(dates),len(candles)

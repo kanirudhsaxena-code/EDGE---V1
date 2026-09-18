@@ -76,7 +76,7 @@ def assessment():
 
 def test_standard_report_matches_mandatory_efficacy_v2_four_table_order():
     text=render_standard_edge_report(bundle(),assessment())
-    assert text.count("|---|")==4
+    assert text.count("\n\n")==3
     i1=text.index("| EDGE MASTER ASSESSMENT |")
     i2=text.index("| ACTIVE CALLS |")
     i3=text.index("| CURRENT STOCK OUTCOME |")

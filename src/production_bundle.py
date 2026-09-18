@@ -148,7 +148,7 @@ def build_canonical_bundle(
         horizon_days=shadow.recommendation.horizon_trading_days,
         expiry_trading_date=metadata.checkpoint_dates[-1],
         reference_price=metadata.reference_price,
-        evidence_source_refs=shadow.recommendation.evidence_refs,
+        evidence_source_refs=tuple(dict.fromkeys(shadow.recommendation.evidence_refs)),
         component_scores=component_rows,
         market_trust=mt,
         bot=bot_row,

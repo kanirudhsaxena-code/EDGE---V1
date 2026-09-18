@@ -10,7 +10,7 @@ The pipeline is shadow-only: it never persists.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Mapping, Optional, Sequence
 
@@ -76,7 +76,7 @@ class ShadowComputation:
     zone_basis: Optional[str]
     zone_width_pct: Optional[float]
     recommendation: RecommendationEnvelope
-    component_summaries: Mapping[str, tuple[str, str]]
+    component_summaries: Mapping[str, tuple[str, str]] = field(default_factory=dict)
 
 
 EvidenceAnalyst = Callable[

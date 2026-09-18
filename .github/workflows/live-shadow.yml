@@ -1,5 +1,5 @@
 name: EDGE Live Shadow
-# zone-candidate diagnostic replay
+# volatility-structure zone validation
 
 on:
   workflow_dispatch:

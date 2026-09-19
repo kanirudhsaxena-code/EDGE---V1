@@ -46,6 +46,7 @@ class ProductionMetadata:
     tracking_policy: str = "EDGE_D5_V2"
     active_override: Optional[str] = None
     rationale: Optional[str] = None
+    research_bundle_id: Optional[str] = None
 
 
 def build_canonical_bundle(
@@ -158,4 +159,5 @@ def build_canonical_bundle(
         bot=bot_row,
         execution_plan=metadata.execution_plan,
         checkpoint_dates=metadata.checkpoint_dates,
+        research_bundle_id=metadata.research_bundle_id,
     )

@@ -65,6 +65,7 @@ def main() -> int:
     token=os.getenv("UPSTOX_ANALYTICS_TOKEN","")
     db_url=os.getenv("DATABASE_URL","")
     holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
+    run_mode=os.getenv("EDGE_RUN_MODE","MANUAL").strip().upper()
 
     if not token or not db_url:
         code="UPSTOX_TOKEN_MISSING" if not token else "DATABASE_URL_MISSING"
@@ -95,13 +96,16 @@ def main() -> int:
     india_now=now.astimezone(ZoneInfo("Asia/Kolkata"))
     india_date=india_now.date()
 
-    if india_now.time().hour < 15 or (
-        india_now.time().hour == 15 and india_now.time().minute < 40
+    if run_mode == "SCHEDULED" and (
+        india_now.time().hour < 15 or (
+            india_now.time().hour == 15 and india_now.time().minute < 40
+        )
     ):
         print(json.dumps({
             "status":"BEFORE_MARKET_CLOSE",
             "ticker":ticker,
             "india_time":india_now.isoformat(),
+            "run_mode":run_mode,
             "publishing_enabled":True,
             "trading_enabled":False,
         },sort_keys=True))
@@ -109,7 +113,7 @@ def main() -> int:
 
     try:
         provider=UpstoxReadOnlyStockProvider(token)
-        if not is_nse_trading_day(provider,india_date):
+        if run_mode == "SCHEDULED" and not is_nse_trading_day(provider,india_date):
             print(json.dumps({
                 "status":"NON_TRADING_DAY",
                 "ticker":ticker,
@@ -144,7 +148,7 @@ def main() -> int:
                 (ticker,f"EDGE-{ticker}-%-AUTO",india_date),
             )
             existing=cur.fetchone()
-        if existing:
+        if existing and run_mode == "SCHEDULED":
             print(json.dumps({
                 "status":"ALREADY_PUBLISHED_TODAY",
                 "ticker":ticker,

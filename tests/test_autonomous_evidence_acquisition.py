@@ -129,3 +129,21 @@ def test_exact_symbol_resolution_rejects_ambiguous_or_missing_symbol():
         assert "INSTRUMENT_NOT_FOUND" in str(exc)
     else:
         raise AssertionError("must reject non-exact instrument search result")
+
+
+class NoIntradayOpener(FakeOpener):
+    def open(self, request, timeout=20):
+        url=request.full_url
+        if "/v3/historical-candle/intraday/" in url:
+            return Response(url, {"status":"success","data":{"candles":[]}})
+        return super().open(request,timeout=timeout)
+
+
+def test_market_provider_uses_latest_available_daily_when_intraday_empty():
+    p=UpstoxReadOnlyStockProvider("token",opener=NoIntradayOpener(),sleep=lambda _:None)
+    market=p.acquire_market("LTF",RUN_AT)
+    refs=" ".join(market.payloads.keys())
+    assert "historical-candle" in refs
+    assert all("/intraday/" not in ref for ref in market.payloads)
+    cats={o.category for o in market.observations}
+    assert {"PRICE_STRUCTURE","SPECIFIC_CHART_PATTERN","RELATIVE_STRENGTH","PV_PVPO"} <= cats

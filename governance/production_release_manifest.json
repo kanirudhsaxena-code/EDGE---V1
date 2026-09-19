@@ -1,0 +1,22 @@
+{
+  "manifest_version": "1.0",
+  "consumer": "EDGE_STOCKS",
+  "master_spec": {
+    "source": "GOOGLE_DRIVE",
+    "file_id": "13i-KF2ylid2AF3ZTfwMe932GUDMmIL4z",
+    "title": "EDGE_V1_Master_Specification_CANONICAL.docx",
+    "canonical_spec_version": "EDGE V1 canonical + EDGE_STOCKS_V1_3 / EFFICACY_V2 amendment",
+    "modified_at": "2026-09-18T18:37:13.613Z",
+    "content_sha256_lf": "fa9ce91c0badf05e5a1b98dc980085f1d08f780e8188b3e10767867a802b4c96",
+    "hash_normalization": "CRLF_TO_LF"
+  },
+  "production_binding": {
+    "analytical_core": "EDGE_V1",
+    "user_facing_contract": "EDGE_STOCKS_V1_3",
+    "presentation_semantics": "EFFICACY_V2",
+    "methodology_status": "FROZEN_UNCHANGED",
+    "research_authority": "GOVERNED_FRESH_RESEARCH_REQUIRED"
+  },
+  "binding_status": "BOUND",
+  "governance_note": "V1.3 supersedes V1.2 for new standard EDGE Stocks outputs without changing the EDGE V1 analytical core."
+}

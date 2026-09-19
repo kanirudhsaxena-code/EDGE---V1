@@ -1,0 +1,71 @@
+name: Temporary TITAN Upstox Diagnostic
+
+on:
+  push:
+    branches:
+      - diag/titan-upstox
+    paths:
+      - .github/workflows/diagnostic-titan-upstox.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Print sanitized research scoring inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from src.upstox_research import UpstoxReadOnlyResearchProvider
+          from src.autonomous_interpreter import _fundamental_score, _valuation_score
+
+          provider=UpstoxReadOnlyResearchProvider(os.environ["UPSTOX_ANALYTICS_TOKEN"], sleep=lambda _: None)
+          acquisition=provider.collect("TITAN", datetime.now(timezone.utc))
+          income=next(v for k,v in acquisition.payloads.items() if "/income-statement" in k)
+          ratios=next(v for k,v in acquisition.payloads.items() if "/key-ratios" in k)
+
+          income_rows=[]
+          for item in income.get("data",{}).get("income_statement",[]):
+              if not isinstance(item,dict) or item.get("category") not in {"revenue","net_profit"}:
+                  continue
+              history=[]
+              for h in item.get("history",[])[:4]:
+                  if not isinstance(h,dict):
+                      continue
+                  keep={k:h.get(k) for k in (
+                      "period","financial_year","quarter","date","end_date","value","change"
+                  ) if k in h}
+                  history.append(keep)
+              income_rows.append({"category":item.get("category"),"history":history})
+
+          ratio_rows=[]
+          for item in ratios.get("data",[]):
+              if isinstance(item,dict) and item.get("name") in {"P/E","P/B","EV/EBITDA"}:
+                  ratio_rows.append({
+                      "name":item.get("name"),
+                      "company_value":item.get("company_value"),
+                      "sector_value":item.get("sector_value"),
+                  })
+
+          print(json.dumps({
+              "ticker":"TITAN",
+              "fundamental_score":_fundamental_score(income),
+              "valuation_score":_valuation_score(ratios),
+              "income_inputs":income_rows,
+              "valuation_inputs":ratio_rows,
+          },sort_keys=True))
+          PY

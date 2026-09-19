@@ -14,6 +14,8 @@ from typing import Any, Mapping, Optional, Sequence
 
 from src.frozen_engine import ComponentInput
 from src.shadow_pipeline import AnalystInterpretation
+from src.autonomous_evidence_acquisition import AcquiredEvidenceBundle
+from src.evidence_gate import EvidenceItem, validate_fresh_evidence
 
 CONTRACT_VERSION="EDGE_RESEARCH_BUNDLE_V1"
 RESEARCH_AUTHORITY="CHATGPT"
@@ -250,3 +252,32 @@ def apply_independent_research_validation(
         component_scores=tuple(rows),
         component_summaries=summaries,
     )
+
+
+def augment_acquired_evidence_with_research(
+    acquired:AcquiredEvidenceBundle,
+    research:GovernedResearchBundle,
+    *,
+    run_at:datetime,
+    options_decision_requested:bool=False,
+)->AcquiredEvidenceBundle:
+    extra=[]
+    for component,refs in research.source_refs_by_component.items():
+        if not refs:
+            continue
+        extra.append(EvidenceItem(
+            category=component,
+            ticker=acquired.ticker,
+            captured_at=research.research_fresh_at,
+            source_ref="|".join(refs),
+            verified=True,
+            payload_ref=f"EDGE_RESEARCH_BUNDLE:{research.bundle_id}",
+        ))
+    evidence=tuple(acquired.evidence)+tuple(extra)
+    gate=validate_fresh_evidence(
+        acquired.ticker,evidence,run_at,
+        options_decision_requested=options_decision_requested,
+    )
+    payloads=dict(acquired.payloads)
+    payloads[f"edge-research:{research.bundle_id}"]=dict(research.payload)
+    return replace(acquired,evidence=evidence,payloads=payloads,gate=gate)

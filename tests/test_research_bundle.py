@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from src.frozen_engine import ComponentInput
 from src.research_bundle import (
     GovernedResearchBundle,
+    ResearchReconciliationError,
     apply_independent_research_validation,
     validate_research_bundle_payload,
 )
@@ -28,7 +29,7 @@ def payload():
         ],
         "claims":[
             {"claim_id":"c1","evidence_category":"NEWS_EVENTS_CATALYSTS","statement":"No unresolved adverse catalyst found in current exchange/company evidence.","materiality":"HIGH","direction":"NEUTRAL","source_ids":["s1","s2"],"verification_status":"VERIFIED","independent_validation":True},
-            {"claim_id":"c2","evidence_category":"BUSINESS_FUNDAMENTALS","statement":"Latest reported fundamentals independently checked.","materiality":"MODERATE","direction":"NEUTRAL","source_ids":["s1","s2"],"verification_status":"VERIFIED","independent_validation":True},
+            {"claim_id":"c2","evidence_category":"BUSINESS_FUNDAMENTALS","statement":"Latest reported fundamentals independently checked.","materiality":"MODERATE","direction":"POSITIVE","source_ids":["s1","s2"],"verification_status":"VERIFIED","independent_validation":True},
         ],
         "limitations":[],
     }
@@ -119,3 +120,78 @@ def test_independently_validated_component_keeps_frozen_provider_score():
     assert by_name["VALUATION"].raw_score == -1
     assert by_name["VALUATION"].verified is True
     assert "Independent ChatGPT web research validated" in out.component_summaries["VALUATION"][1]
+
+
+def test_high_materiality_direction_conflict_fails_closed():
+    p=payload()
+    p["claims"][1]["materiality"]="HIGH"
+    p["claims"][1]["direction"]="NEGATIVE"
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"BUSINESS_FUNDAMENTALS"}),
+        source_refs_by_component={"BUSINESS_FUNDAMENTALS":("https://www.nseindia.com/example",)},
+    )
+    try:
+        apply_independent_research_validation(interpretation(),research)
+    except ResearchReconciliationError as exc:
+        assert any("BUSINESS_FUNDAMENTALS" in blocker for blocker in exc.blockers)
+        assert any("HIGH:NEGATIVE" in blocker for blocker in exc.blockers)
+    else:
+        raise AssertionError("HIGH research/provider contradiction must fail closed")
+
+
+def test_moderate_direction_conflict_is_excluded_not_neutralized():
+    p=payload()
+    p["claims"].append({
+        "claim_id":"c3",
+        "evidence_category":"VALUATION",
+        "statement":"Independent valuation evidence is positive.",
+        "materiality":"MODERATE",
+        "direction":"POSITIVE",
+        "source_ids":["s2"],
+        "verification_status":"VERIFIED",
+        "independent_validation":True,
+    })
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"VALUATION"}),
+        source_refs_by_component={"VALUATION":("https://www.nseindia.com/example",)},
+    )
+    out=apply_independent_research_validation(interpretation(),research)
+    by_name={x.component:x for x in out.component_scores}
+    assert by_name["VALUATION"].verified is False
+    assert by_name["VALUATION"].raw_score is None
+    assert out.component_summaries["VALUATION"][0]=="CONFLICTED"
+    assert "excluded rather than neutralized or overwritten" in out.component_summaries["VALUATION"][1]
+
+
+def test_compatible_research_preserves_exact_provider_score():
+    p=payload()
+    p["claims"].append({
+        "claim_id":"c3",
+        "evidence_category":"VALUATION",
+        "statement":"Independent valuation evidence is negative.",
+        "materiality":"MODERATE",
+        "direction":"NEGATIVE",
+        "source_ids":["s2"],
+        "verification_status":"VERIFIED",
+        "independent_validation":True,
+    })
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"VALUATION"}),
+        source_refs_by_component={"VALUATION":("https://www.nseindia.com/example",)},
+    )
+    out=apply_independent_research_validation(interpretation(),research)
+    by_name={x.component:x for x in out.component_scores}
+    assert by_name["VALUATION"].verified is True
+    assert by_name["VALUATION"].raw_score == -1

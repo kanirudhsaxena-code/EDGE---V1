@@ -79,7 +79,9 @@ def build_canonical_bundle(
             availability_status=row.availability_status,
             normalized_weight=row.normalized_weight,
             weighted_contribution=row.weighted_contribution,
-            conflict_flag=False,
+            conflict_flag=(
+                shadow.component_summaries.get(row.component, ("", ""))[0] == "CONFLICTED"
+            ),
             gate_override_flag=shadow.event_override,
             notes=json.dumps({
                 "key_outcome": shadow.component_summaries.get(row.component, (row.availability_status, ""))[0],

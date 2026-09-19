@@ -53,6 +53,14 @@ class ResearchBundleGate:
     warnings:tuple[str,...]
 
 
+class ResearchReconciliationError(ValueError):
+    """Raised when fresh independent research materially contradicts provider interpretation."""
+
+    def __init__(self, blockers:Sequence[str]):
+        self.blockers=tuple(str(x) for x in blockers if str(x).strip())
+        super().__init__("; ".join(self.blockers))
+
+
 def _aware(value:Any)->Optional[datetime]:
     try:
         dt=datetime.fromisoformat(str(value).replace("Z","+00:00"))
@@ -224,12 +232,59 @@ def load_governed_research_bundle(
     )
 
 
+def _independent_verified_claims(
+    research:GovernedResearchBundle,
+    component:str,
+)->tuple[Mapping[str,Any],...]:
+    sources={
+        str(raw.get("source_id")):raw
+        for raw in research.payload.get("sources",[])
+        if isinstance(raw,Mapping) and raw.get("source_id")
+    }
+    out=[]
+    for claim in research.payload.get("claims",[]):
+        if not isinstance(claim,Mapping):
+            continue
+        if CLAIM_TO_COMPONENT.get(str(claim.get("evidence_category","")).upper())!=component:
+            continue
+        if str(claim.get("verification_status","")).upper()!="VERIFIED":
+            continue
+        used=[sources.get(str(sid)) for sid in claim.get("source_ids",[])]
+        if not any(
+            isinstance(source,Mapping)
+            and str(source.get("provider","")).upper() in {"CHATGPT_WEB","EXA"}
+            for source in used
+        ):
+            continue
+        out.append(claim)
+    return tuple(out)
+
+
+def _directional_conflict(raw_score:Optional[int], research_direction:str)->bool:
+    if raw_score is None or raw_score==0:
+        return False
+    provider_direction="POSITIVE" if raw_score>0 else "NEGATIVE"
+    direction=research_direction.strip().upper()
+    if direction in {"NEUTRAL","BINARY_UNCERTAIN"}:
+        return True
+    return direction in {"POSITIVE","NEGATIVE"} and direction!=provider_direction
+
+
 def apply_independent_research_validation(
     interpretation:AnalystInterpretation,
     research:GovernedResearchBundle,
 )->AnalystInterpretation:
+    """Reconcile provider interpretation with fresh independently verified research.
+
+    This governance layer never edits a provider raw score. Compatible scores remain
+    untouched. Missing validation is excluded under the frozen missing-data rules.
+    Direct lower-materiality contradictions are marked CONFLICTED and excluded.
+    HIGH/CRITICAL contradictions fail closed before frozen EDGE computation.
+    """
     rows=[]
     summaries=dict(interpretation.component_summaries or {})
+    material_blockers:list[str]=[]
+
     for row in interpretation.component_scores:
         name=row.component.strip().upper()
         if name not in RESEARCH_SENSITIVE_COMPONENTS:
@@ -242,11 +297,56 @@ def apply_independent_research_validation(
                 "Supporting provider evidence was excluded because fresh independent ChatGPT web validation was unavailable."
             )
             continue
+
+        claims=_independent_verified_claims(research,name)
+        conflicts=[
+            claim for claim in claims
+            if _directional_conflict(row.raw_score,str(claim.get("direction","")))
+        ]
+        if conflicts:
+            details=[]
+            high_or_critical=False
+            for claim in conflicts:
+                materiality=str(claim.get("materiality","")).upper()
+                direction=str(claim.get("direction","")).upper()
+                claim_id=str(claim.get("claim_id","unknown"))
+                details.append(f"{claim_id}:{materiality}:{direction}")
+                high_or_critical = high_or_critical or materiality in {"HIGH","CRITICAL"}
+            provider_direction=(
+                "POSITIVE" if (row.raw_score or 0)>0
+                else "NEGATIVE" if (row.raw_score or 0)<0
+                else "NEUTRAL"
+            )
+            message=(
+                f"{name} provider score {row.raw_score:+d} ({provider_direction}) conflicts with "
+                f"fresh independent research [{', '.join(details)}] in {research.bundle_id}"
+            )
+            if high_or_critical:
+                material_blockers.append(message)
+            rows.append(ComponentInput(name,None,verified=False))
+            summaries[name]=(
+                "CONFLICTED",
+                message+"; provider score excluded rather than neutralized or overwritten."
+            )
+            continue
+
         rows.append(row)
         prior=summaries.get(name,("VERIFIED",""))
         count=len(research.source_refs_by_component.get(name,()))
-        suffix=f" Independent ChatGPT web research validated this component using {count} source(s) in {research.bundle_id}."
+        directions=sorted({
+            str(claim.get("direction","")).upper()
+            for claim in claims if claim.get("direction")
+        })
+        direction_text=f" Research direction(s): {', '.join(directions)}." if directions else ""
+        suffix=(
+            f" Independent ChatGPT web research validated this component using {count} "
+            f"source(s) in {research.bundle_id}.{direction_text}"
+        )
         summaries[name]=(prior[0],(prior[1]+suffix).strip())
+
+    if material_blockers:
+        raise ResearchReconciliationError(material_blockers)
+
     return replace(
         interpretation,
         component_scores=tuple(rows),

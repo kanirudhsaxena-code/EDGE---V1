@@ -107,7 +107,7 @@ def test_missing_independent_component_validation_excludes_provider_score():
     assert by_name["BUSINESS_FUNDAMENTALS"].verified is True
     assert by_name["VALUATION"].verified is False
     assert by_name["VALUATION"].raw_score is None
-    assert "Independent fresh web validation unavailable" in out.component_summaries["VALUATION"][1]
+    assert "fresh independent ChatGPT web validation was unavailable" in out.component_summaries["VALUATION"][1]
 
 
 def test_independently_validated_component_keeps_frozen_provider_score():

@@ -116,3 +116,26 @@ def test_canonical_bundle_deduplicates_shared_evidence_refs():
     s2=ShadowComputation(**{**s.__dict__,"recommendation":dup_rec})
     b=build_canonical_bundle(s2,meta())
     assert b.evidence_source_refs==("ref:a","ref:b")
+
+
+def test_canonical_bundle_persists_research_conflict_flag_without_score_invention():
+    s=shadow()
+    rows=tuple(
+        ComponentInput(row.component,None,False) if row.component=="VALUATION" else row
+        for row in s.component_scores
+    )
+    s2=ShadowComputation(**{
+        **s.__dict__,
+        "component_scores":rows,
+        "component_summaries":{
+            "VALUATION":(
+                "CONFLICTED",
+                "Provider valuation direction conflicts with independent research; score excluded."
+            )
+        },
+    })
+    b=build_canonical_bundle(s2,meta())
+    valuation=next(row for row in b.component_scores if row.component=="VALUATION")
+    assert valuation.raw_score is None
+    assert valuation.availability_status=="NOT_VERIFIED"
+    assert valuation.conflict_flag is True

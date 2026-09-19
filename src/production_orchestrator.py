@@ -41,6 +41,7 @@ from src.research_bundle import (
     load_governed_research_bundle,
     augment_acquired_evidence_with_research,
     apply_independent_research_validation,
+    ResearchReconciliationError,
 )
 
 
@@ -131,7 +132,12 @@ def build_production_candidate(
 
     analyst=ConservativeAutonomousInterpreter()
     interpretation=analyst(acquired.ticker,acquired.evidence,acquired.payloads,run_at)
-    interpretation=apply_independent_research_validation(interpretation,governed_research)
+    try:
+        interpretation=apply_independent_research_validation(interpretation,governed_research)
+    except ResearchReconciliationError as exc:
+        return ProductionCandidateResult(
+            "BLOCKED_RESEARCH_RECONCILIATION",exc.blockers,None,None,None
+        )
     shadow=compute_shadow_recommendation(
         acquired,run_at,lambda *_: interpretation
     )

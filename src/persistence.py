@@ -133,6 +133,7 @@ class CanonicalRecommendationWrite:
     bot: BotScoreWrite
     execution_plan: ExecutionPlanWrite
     checkpoint_dates: tuple[date, date, date, date, date]
+    research_bundle_id: Optional[str] = None
     model_version: str = "EDGE_V1"
     command_type: str = "EDGE"
 
@@ -156,6 +157,7 @@ def _canonical_hash(bundle: CanonicalRecommendationWrite) -> str:
         "bot_score": bundle.bot_score,
         "definitive_recommendation": bundle.definitive_recommendation,
         "evidence_source_refs": sorted(bundle.evidence_source_refs),
+        "research_bundle_id": bundle.research_bundle_id,
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -335,6 +337,29 @@ class AtomicNeonPersistenceAdapter:
                     record_hash,
                 ),
             )
+
+            if bundle.research_bundle_id:
+                cur.execute(
+                    """
+                    select ticker,status
+                      from edge_research_bundles
+                     where bundle_id=%s
+                     limit 1
+                    """,
+                    (bundle.research_bundle_id,),
+                )
+                research_row=cur.fetchone()
+                if not research_row:
+                    raise RuntimeError("governed research bundle not found during persistence")
+                if str(research_row[0]).upper()!=bundle.ticker.upper() or str(research_row[1])!="READY":
+                    raise RuntimeError("governed research bundle is not eligible for recommendation linkage")
+                cur.execute(
+                    """
+                    insert into recommendation_research_bundle(recommendation_id,bundle_id)
+                    values (%s,%s)
+                    """,
+                    (bundle.recommendation_id,bundle.research_bundle_id),
+                )
 
             cur.execute(
                 """

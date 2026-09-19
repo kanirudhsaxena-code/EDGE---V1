@@ -66,6 +66,18 @@ def main() -> int:
     db_url=os.getenv("DATABASE_URL","")
     holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
     run_mode=os.getenv("EDGE_RUN_MODE","MANUAL").strip().upper()
+    research_bundle_id=os.getenv("EDGE_RESEARCH_BUNDLE_ID","").strip()
+
+    if not research_bundle_id:
+        print(json.dumps({
+            "status":"BLOCKED_RESEARCH_BUNDLE",
+            "diagnostic_code":"CHATGPT_RESEARCH_BUNDLE_REQUIRED",
+            "ticker":ticker,
+            "run_mode":run_mode,
+            "publishing_enabled":False,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 0 if run_mode=="SCHEDULED" else 3
 
     if not token or not db_url:
         code="UPSTOX_TOKEN_MISSING" if not token else "DATABASE_URL_MISSING"
@@ -167,6 +179,7 @@ def main() -> int:
             holding_state=holding,
             publish=True,
             historical_cache=historical_cache,
+            research_bundle_id=research_bundle_id,
             release_approval=ReleaseApproval(
                 shadow_validation_accepted=True,
                 zone_method_validated=True,

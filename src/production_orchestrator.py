@@ -37,6 +37,11 @@ from src.shadow_pipeline import compute_shadow_recommendation
 from src.state_recovery import recover_pre_run_state
 from src.trading_calendar import fetch_next_five_nse_trading_dates
 from src.upstox_research import UpstoxReadOnlyResearchProvider
+from src.research_bundle import (
+    load_governed_research_bundle,
+    augment_acquired_evidence_with_research,
+    apply_independent_research_validation,
+)
 
 
 class HoldingState(str, Enum):
@@ -82,6 +87,7 @@ def build_production_candidate(
     publish: bool=False,
     release_approval: Optional[ReleaseApproval]=None,
     historical_cache: Any=None,
+    research_bundle_id: Optional[str]=None,
 ) -> ProductionCandidateResult:
     if run_at.tzinfo is None:
         raise ValueError("run_at must be timezone-aware")
@@ -100,8 +106,24 @@ def build_production_candidate(
             "BLOCKED_PRE_RUN_EFFICACY",pre.blockers,None,None,None
         )
 
+    if not research_bundle_id:
+        return ProductionCandidateResult(
+            "BLOCKED_RESEARCH_BUNDLE",("fresh ChatGPT research bundle is required",),None,None,None
+        )
+    try:
+        governed_research=load_governed_research_bundle(
+            connection,research_bundle_id,ticker=ticker,run_at=run_at
+        )
+    except (ValueError,TypeError,KeyError) as exc:
+        return ProductionCandidateResult(
+            "BLOCKED_RESEARCH_BUNDLE",(str(exc),),None,None,None
+        )
+
     acquirer=AutonomousEvidenceAcquirer(market,[research])
     acquired=acquirer.acquire(ticker,run_at,options_decision_requested=False)
+    acquired=augment_acquired_evidence_with_research(
+        acquired,governed_research,run_at=run_at,options_decision_requested=False
+    )
     if not acquired.gate.ready:
         return ProductionCandidateResult(
             "BLOCKED_EVIDENCE",acquired.gate.blockers,None,None,None
@@ -109,6 +131,7 @@ def build_production_candidate(
 
     analyst=ConservativeAutonomousInterpreter()
     interpretation=analyst(acquired.ticker,acquired.evidence,acquired.payloads,run_at)
+    interpretation=apply_independent_research_validation(interpretation,governed_research)
     shadow=compute_shadow_recommendation(
         acquired,run_at,lambda *_: interpretation
     )
@@ -151,7 +174,8 @@ def build_production_candidate(
         checkpoint_dates=checkpoint_dates,
         execution_plan=final.execution_plan,
         active_override=shadow.event_override,
-        rationale="Autonomous governed EDGE V1 production candidate.",
+        rationale="Autonomous governed EDGE V1 production candidate with mandatory ChatGPT research validation.",
+        research_bundle_id=governed_research.bundle_id,
     )
     canonical=build_canonical_bundle(shadow,metadata)
     report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)

@@ -14,6 +14,9 @@ on:
         description: "UNKNOWN, HOLDS, or NO_HOLDING"
         required: true
         default: "UNKNOWN"
+      research_bundle_id:
+        description: "Immutable EDGE_RESEARCH_BUNDLE_V1 id created by ChatGPT research orchestration"
+        required: true
 
 permissions:
   contents: read
@@ -27,6 +30,7 @@ jobs:
       EDGE_TICKER: ${{ inputs.ticker || 'LTF' }}
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
       EDGE_RUN_MODE: ${{ github.event_name == 'schedule' && 'SCHEDULED' || 'MANUAL' }}
+      EDGE_RESEARCH_BUNDLE_ID: ${{ inputs.research_bundle_id || '' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

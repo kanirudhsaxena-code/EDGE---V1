@@ -326,40 +326,63 @@ class UpstoxReadOnlyStockProvider:
         instrument_key, _company_name = self.resolve_nse_equity(symbol)
 
         stock_quote = self.quote(instrument_key)
-        stock_intraday = self.intraday(instrument_key)
         stock_daily = self.daily(
             instrument_key,
             run_at.date() - timedelta(days=180),
             run_at.date(),
         )
-        benchmark_intraday = self.intraday(NIFTY_50)
         benchmark_daily = self.daily(
             NIFTY_50,
             run_at.date() - timedelta(days=180),
             run_at.date(),
         )
-        self._require_candles(stock_intraday)
         self._require_candles(stock_daily)
-        self._require_candles(benchmark_intraday)
         self._require_candles(benchmark_daily)
 
+        stock_intraday = None
+        benchmark_intraday = None
+        try:
+            candidate = self.intraday(instrument_key)
+            self._require_candles(candidate)
+            stock_intraday = candidate
+        except AcquisitionError:
+            stock_intraday = None
+        try:
+            candidate = self.intraday(NIFTY_50)
+            self._require_candles(candidate)
+            benchmark_intraday = candidate
+        except AcquisitionError:
+            benchmark_intraday = None
+
         payloads: dict[str, Mapping[str, Any]] = {}
-        for env in (stock_quote, stock_intraday, stock_daily, benchmark_intraday, benchmark_daily):
+        envs = [stock_quote, stock_daily, benchmark_daily]
+        if stock_intraday is not None:
+            envs.append(stock_intraday)
+        if benchmark_intraday is not None:
+            envs.append(benchmark_intraday)
+        for env in envs:
             payloads[env.source_ref] = env.payload
 
-        market_ref = "|".join(
-            [stock_quote.source_ref, stock_intraday.source_ref, stock_daily.source_ref]
-        )
-        rs_ref = "|".join([stock_quote.source_ref, benchmark_intraday.source_ref, benchmark_daily.source_ref])
+        market_parts = [stock_quote.source_ref]
+        if stock_intraday is not None:
+            market_parts.append(stock_intraday.source_ref)
+        market_parts.append(stock_daily.source_ref)
+        market_ref = "|".join(market_parts)
+
+        rs_parts = [stock_quote.source_ref]
+        if benchmark_intraday is not None:
+            rs_parts.append(benchmark_intraday.source_ref)
+        rs_parts.append(benchmark_daily.source_ref)
+        rs_ref = "|".join(rs_parts)
 
         observations: list[ProviderObservation] = [
             ProviderObservation(
                 "PRICE_STRUCTURE", symbol, run_at, market_ref, True, "UPSTOX",
-                "QUOTE_INTRADAY_DAILY", detail="Authenticated stock quote + intraday + daily candles",
+                "QUOTE_DAILY_WITH_OPTIONAL_INTRADAY", detail="Authenticated stock quote + latest daily candles; intraday included when available",
             ),
             ProviderObservation(
                 "SPECIFIC_CHART_PATTERN", symbol, run_at, market_ref, True, "UPSTOX",
-                "INTRADAY_DAILY_CANDLES", detail="Raw candles available for governed pattern analysis",
+                "DAILY_WITH_OPTIONAL_INTRADAY", detail="Latest daily candles available for governed pattern analysis; intraday included when available",
             ),
             ProviderObservation(
                 "RELATIVE_STRENGTH", symbol, run_at, rs_ref, True, "UPSTOX",

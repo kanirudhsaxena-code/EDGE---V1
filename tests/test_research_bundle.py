@@ -112,10 +112,24 @@ def test_missing_independent_component_validation_excludes_provider_score():
 
 
 def test_independently_validated_component_keeps_frozen_provider_score():
-    out=apply_independent_research_validation(
-        interpretation(),
-        governed(("NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS","VALUATION","INSTITUTIONAL_BEHAVIOUR","EVENT_SHOCK")),
+    p=payload()
+    p["claims"].extend([
+        {"claim_id":"c3","evidence_category":"VALUATION","statement":"Independent valuation evidence is negative.","materiality":"MODERATE","direction":"NEGATIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c4","evidence_category":"INSTITUTIONAL_BEHAVIOUR","statement":"Independent institutional evidence is positive.","materiality":"MODERATE","direction":"POSITIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c5","evidence_category":"EVENT_SHOCK","statement":"No event shock is independently verified.","materiality":"HIGH","direction":"NEUTRAL","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+    ])
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS","VALUATION","INSTITUTIONAL_BEHAVIOUR","EVENT_SHOCK"}),
+        source_refs_by_component={
+            name:("https://www.nseindia.com/example",)
+            for name in {"NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS","VALUATION","INSTITUTIONAL_BEHAVIOUR","EVENT_SHOCK"}
+        },
     )
+    out=apply_independent_research_validation(interpretation(),research)
     by_name={x.component:x for x in out.component_scores}
     assert by_name["VALUATION"].raw_score == -1
     assert by_name["VALUATION"].verified is True
@@ -195,3 +209,52 @@ def test_compatible_research_preserves_exact_provider_score():
     by_name={x.component:x for x in out.component_scores}
     assert by_name["VALUATION"].verified is True
     assert by_name["VALUATION"].raw_score == -1
+
+
+def test_binary_uncertain_research_excludes_directional_provider_without_conflict():
+    p=payload()
+    p["claims"][1]["materiality"]="HIGH"
+    p["claims"][1]["direction"]="BINARY_UNCERTAIN"
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"BUSINESS_FUNDAMENTALS"}),
+        source_refs_by_component={"BUSINESS_FUNDAMENTALS":("https://www.nseindia.com/example",)},
+    )
+    out=apply_independent_research_validation(interpretation(),research)
+    row=next(x for x in out.component_scores if x.component=="BUSINESS_FUNDAMENTALS")
+    assert row.raw_score is None
+    assert row.verified is False
+    assert out.component_summaries["BUSINESS_FUNDAMENTALS"][0]=="NOT VERIFIED"
+    assert "not independently confirmed" in out.component_summaries["BUSINESS_FUNDAMENTALS"][1]
+
+
+def test_neutral_research_validates_neutral_provider_score():
+    out=apply_independent_research_validation(
+        interpretation(),
+        governed(("NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS")),
+    )
+    row=next(x for x in out.component_scores if x.component=="NEWS_EVENTS_CATALYSTS")
+    assert row.raw_score == 0
+    assert row.verified is True
+    assert "Research direction(s): NEUTRAL" in out.component_summaries["NEWS_EVENTS_CATALYSTS"][1]
+
+
+def test_directional_research_does_not_falsely_validate_neutral_provider():
+    p=payload()
+    p["claims"][0]["direction"]="POSITIVE"
+    research=GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-20260919-085500",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"NEWS_EVENTS_CATALYSTS"}),
+        source_refs_by_component={"NEWS_EVENTS_CATALYSTS":("https://www.nseindia.com/example",)},
+    )
+    out=apply_independent_research_validation(interpretation(),research)
+    row=next(x for x in out.component_scores if x.component=="NEWS_EVENTS_CATALYSTS")
+    assert row.raw_score is None
+    assert row.verified is False
+    assert out.component_summaries["NEWS_EVENTS_CATALYSTS"][0]=="NOT VERIFIED"

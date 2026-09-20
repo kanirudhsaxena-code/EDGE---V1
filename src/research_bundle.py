@@ -260,14 +260,43 @@ def _independent_verified_claims(
     return tuple(out)
 
 
+def _provider_direction(raw_score:Optional[int])->str:
+    if raw_score is None:
+        return "NOT_AVAILABLE"
+    if raw_score>0:
+        return "POSITIVE"
+    if raw_score<0:
+        return "NEGATIVE"
+    return "NEUTRAL"
+
+
 def _directional_conflict(raw_score:Optional[int], research_direction:str)->bool:
+    """True only for an explicit opposite directional claim.
+
+    NEUTRAL/BINARY_UNCERTAIN evidence is not a contradiction. It simply does
+    not independently validate a directional provider score and is handled as
+    NOT VERIFIED below.
+    """
     if raw_score is None or raw_score==0:
         return False
-    provider_direction="POSITIVE" if raw_score>0 else "NEGATIVE"
+    provider_direction=_provider_direction(raw_score)
     direction=research_direction.strip().upper()
-    if direction in {"NEUTRAL","BINARY_UNCERTAIN"}:
-        return True
     return direction in {"POSITIVE","NEGATIVE"} and direction!=provider_direction
+
+
+def _direction_is_independently_supported(
+    raw_score:Optional[int],
+    claims:Sequence[Mapping[str,Any]],
+)->bool:
+    if raw_score is None:
+        return False
+    provider_direction=_provider_direction(raw_score)
+    directions={
+        str(claim.get("direction","")).strip().upper()
+        for claim in claims
+        if str(claim.get("direction","")).strip()
+    }
+    return provider_direction in directions
 
 
 def apply_independent_research_validation(
@@ -312,13 +341,10 @@ def apply_independent_research_validation(
                 claim_id=str(claim.get("claim_id","unknown"))
                 details.append(f"{claim_id}:{materiality}:{direction}")
                 high_or_critical = high_or_critical or materiality in {"HIGH","CRITICAL"}
-            provider_direction=(
-                "POSITIVE" if (row.raw_score or 0)>0
-                else "NEGATIVE" if (row.raw_score or 0)<0
-                else "NEUTRAL"
-            )
+            provider_direction=_provider_direction(row.raw_score)
+            score_text="N/A" if row.raw_score is None else f"{row.raw_score:+d}"
             message=(
-                f"{name} provider score {row.raw_score:+d} ({provider_direction}) conflicts with "
+                f"{name} provider score {score_text} ({provider_direction}) conflicts with "
                 f"fresh independent research [{', '.join(details)}] in {research.bundle_id}"
             )
             if high_or_critical:
@@ -327,6 +353,22 @@ def apply_independent_research_validation(
             summaries[name]=(
                 "CONFLICTED",
                 message+"; provider score excluded rather than neutralized or overwritten."
+            )
+            continue
+
+        if not _direction_is_independently_supported(row.raw_score,claims):
+            provider_direction=_provider_direction(row.raw_score)
+            research_directions=sorted({
+                str(claim.get("direction","")).strip().upper()
+                for claim in claims
+                if str(claim.get("direction","")).strip()
+            })
+            rows.append(ComponentInput(name,None,verified=False))
+            summaries[name]=(
+                "NOT VERIFIED",
+                f"{name} provider direction {provider_direction} was not independently confirmed "
+                f"by fresh research directions {research_directions or ['NONE']} in {research.bundle_id}; "
+                "provider score excluded under the frozen missing-data rules."
             )
             continue
 

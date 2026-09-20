@@ -1,0 +1,140 @@
+name: 5DR Console Execute Proxy
+run-name: 5DR Console Execute · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Governed EDGE Console request ID
+        required: true
+        type: string
+      console_url:
+        description: EDGE Console base URL
+        required: true
+        type: string
+      execution_packet:
+        description: Governed normalized execution packet JSON
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FIVEDR_REF: 0220a39708b36174dbe806bd5781072968466466
+
+jobs:
+  execute:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout pinned canonical 5DR engine
+        run: |
+          git init fivedr
+          git -C fivedr remote add origin https://github.com/kanirudhsaxena-code/5DR-V2.git
+          git -C fivedr fetch --depth 1 origin "$FIVEDR_REF"
+          git -C fivedr checkout --detach FETCH_HEAD
+          test "$(git -C fivedr rev-parse HEAD)" = "$FIVEDR_REF"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve governed execution packet
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          EXECUTION_PACKET: ${{ inputs.execution_packet }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          validate_packet() {
+            python - <<'PY'
+          import json
+          with open("request.json","r",encoding="utf-8") as handle:
+              payload=json.load(handle)
+          if not isinstance(payload,dict) or not isinstance(payload.get("evidence"),list):
+              raise SystemExit("EDGE Console execution packet is not governed JSON")
+          required=("request_id","provenance_mode","framework_version","output_contract_version")
+          missing=[k for k in required if not payload.get(k)]
+          if missing:
+              raise SystemExit("EDGE Console execution packet missing: "+",".join(missing))
+          print("governed_execution_packet_ok evidence_items="+str(len(payload["evidence"])))
+          PY
+          }
+          if [ -n "$EXECUTION_PACKET" ]; then
+            printf '%s' "$EXECUTION_PACKET" > request.json
+            validate_packet
+          else
+            ENDPOINT="$CONSOLE_URL/api/5dr/run-requests/$REQUEST_ID/execution-packet"
+            fetch_auth() {
+              curl --location --fail-with-body --silent --show-error                 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"                 -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"                 -H "Accept: application/json" "$ENDPOINT" -o request.json
+            }
+            fetch_public() {
+              curl --location --fail-with-body --silent --show-error                 -H "Accept: application/json" "$ENDPOINT" -o request.json
+            }
+            if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+              fetch_auth || fetch_public
+            else
+              fetch_public
+            fi
+            validate_packet
+          fi
+
+      - name: Execute governed pinned 5DR engine
+        run: |
+          cd fivedr
+          python -m src.runner --input ../request.json --publish > ../envelope.json
+
+      - name: Emit governed result handoff
+        run: |
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          raw=Path("envelope.json").read_bytes()
+          print("EDGE_CONSOLE_ENVELOPE_B64::"+base64.b64encode(raw).decode("ascii"))
+          PY
+
+      - name: Upload governed result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5dr-console-result-${{ inputs.request_id }}
+          path: envelope.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish validated result to EDGE Console
+        continue-on-error: true
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          STABLE_CONSOLE_URL: https://edge-console.k-anirudhsaxena.workers.dev
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          publish_result() {
+            BASE="$1"
+            ENDPOINT="$BASE/api/5dr/runs"
+            if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+              curl --location --fail-with-body --silent --show-error                 -X POST                 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"                 -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"                 -H "Content-Type: application/json"                 --data-binary @envelope.json                 "$ENDPOINT" && return 0
+            fi
+            curl --location --fail-with-body --silent --show-error               -X POST               -H "Content-Type: application/json"               --data-binary @envelope.json               "$ENDPOINT"
+          }
+          if ! publish_result "$CONSOLE_URL"; then
+            publish_result "$STABLE_CONSOLE_URL"
+          fi
+
+      - name: Mark Console request failed
+        if: failure()
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          printf '%s' '{"error":"5DR proxy execution failed before validated publication"}' > failure.json
+          ENDPOINT="$CONSOLE_URL/api/5dr/run-requests/$REQUEST_ID/fail"
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            curl --location --fail-with-body --silent --show-error               -X POST               -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"               -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"               -H "Content-Type: application/json"               --data-binary @failure.json "$ENDPOINT" && exit 0
+          fi
+          curl --location --fail-with-body --silent --show-error             -X POST             -H "Content-Type: application/json"             --data-binary @failure.json "$ENDPOINT" || true

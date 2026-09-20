@@ -58,7 +58,17 @@ jobs:
           --request-id "${{ inputs.request_id }}"
           --output console_market_evidence.json
 
+      - name: Emit bounded evidence handoff
+        run: |
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          raw=Path("fivedr/console_market_evidence.json").read_bytes()
+          print("EDGE_CONSOLE_MARKET_EVIDENCE_B64::"+base64.b64encode(raw).decode("ascii"))
+          PY
+
       - name: Publish bounded evidence to EDGE Console
+        continue-on-error: true
         env:
           CONSOLE_URL: ${{ inputs.console_url }}
           REQUEST_ID: ${{ inputs.request_id }}

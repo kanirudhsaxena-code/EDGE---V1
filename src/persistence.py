@@ -136,6 +136,8 @@ class CanonicalRecommendationWrite:
     execution_plan: ExecutionPlanWrite
     checkpoint_dates: tuple[date, date, date, date, date]
     research_bundle_id: Optional[str] = None
+    canonical_requested_at: Optional[datetime] = None
+    canonical_attempt_slot: Optional[str] = None
     model_version: str = "EDGE_V1"
     command_type: str = "EDGE"
 
@@ -512,7 +514,11 @@ class AtomicNeonPersistenceAdapter:
                 "update edge_runs set status='COMMITTED' where run_id=%s",
                 (run_id,),
             )
-            register_recommendation_governance(conn,bundle.recommendation_id)
+            register_recommendation_governance(
+                conn,bundle.recommendation_id,
+                requested_at=bundle.canonical_requested_at,
+                canonical_attempt_slot=bundle.canonical_attempt_slot,
+            )
             conn.commit()
             return bundle.recommendation_id
         except Exception:

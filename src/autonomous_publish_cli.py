@@ -67,6 +67,30 @@ def main() -> int:
     holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
     run_mode=os.getenv("EDGE_RUN_MODE","MANUAL").strip().upper()
     research_bundle_id=os.getenv("EDGE_RESEARCH_BUNDLE_ID","").strip()
+    canonical_requested_raw=os.getenv("EDGE_CANONICAL_REQUESTED_AT","").strip()
+    canonical_attempt_slot=os.getenv("EDGE_CANONICAL_ATTEMPT_SLOT","").strip() or None
+    canonical_requested_at=None
+    if canonical_requested_raw:
+        try:
+            canonical_requested_at=datetime.fromisoformat(canonical_requested_raw.replace("Z","+00:00"))
+        except ValueError:
+            print(json.dumps({
+                "status":"BLOCKED_CONFIGURATION",
+                "diagnostic_code":"INVALID_CANONICAL_REQUESTED_AT",
+                "ticker":ticker,
+                "publishing_enabled":False,
+                "trading_enabled":False,
+            },sort_keys=True))
+            return 2
+        if canonical_requested_at.tzinfo is None:
+            print(json.dumps({
+                "status":"BLOCKED_CONFIGURATION",
+                "diagnostic_code":"CANONICAL_REQUESTED_AT_MUST_BE_TIMEZONE_AWARE",
+                "ticker":ticker,
+                "publishing_enabled":False,
+                "trading_enabled":False,
+            },sort_keys=True))
+            return 2
 
     if not research_bundle_id:
         print(json.dumps({
@@ -180,6 +204,8 @@ def main() -> int:
             publish=True,
             historical_cache=historical_cache,
             research_bundle_id=research_bundle_id,
+            canonical_requested_at=canonical_requested_at,
+            canonical_attempt_slot=canonical_attempt_slot,
             release_approval=ReleaseApproval(
                 shadow_validation_accepted=True,
                 zone_method_validated=True,

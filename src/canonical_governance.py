@@ -114,6 +114,12 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
             raise ValueError("recommendation not found")
         ticker,run_at,committed_at,horizon,research_fresh_at=row
         classification=classify_stock_run(run_at)
+        candidate_type=classification["candidate_type"]
+        fallback_reason=None
+        if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}:
+            if research_fresh_at is None or (run_at-research_fresh_at).total_seconds() > 90*60:
+                candidate_type="DIAGNOSTIC_SNAPSHOT"
+                fallback_reason="Canonical eligibility blocked: governed stock research was not refreshed within 90 minutes of issuance."
         key=canonical_key(ticker,classification["target_trading_date"],horizon)
         cur.execute(
             """
@@ -126,14 +132,16 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
             """,
             (
                 recommendation_id,key,str(ticker).upper(),classification["target_trading_date"],
-                horizon,classification["candidate_type"],run_at,committed_at or run_at,
+                horizon,candidate_type,run_at,committed_at or run_at,
                 classification["ordinary_cutoff_at"],classification["hard_boundary_at"],
                 research_fresh_at,
-                "Overnight fallback requires no newer material governed research before selection."
-                if classification["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL" else None,
+                fallback_reason or (
+                    "Overnight fallback requires no newer material governed research before selection."
+                    if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else None
+                ),
             ),
         )
-    return {**classification,"canonical_key":key}
+    return {**classification,"candidate_type":candidate_type,"canonical_key":key}
 
 
 def _fallback_research_still_current(cur,ticker:str,recommendation_id:str,run_at:datetime,cutoff:datetime)->bool:

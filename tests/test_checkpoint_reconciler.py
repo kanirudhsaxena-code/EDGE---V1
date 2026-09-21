@@ -44,6 +44,8 @@ class Provider:
     def daily(self,key,start,end):
         assert end-start == __import__('datetime').timedelta(days=7)
         return Env(end)
+    def daily_legacy(self,key,start,end):
+        return Env(end)
 
 
 def test_candle_exact_date_is_required():
@@ -97,3 +99,29 @@ def test_reconciliation_uses_bounded_lookback_but_requires_exact_due_date():
     assert out[0].actual_price==305
     assert out[0].period_high==307
     assert out[0].period_low==298
+
+
+def test_reconciliation_falls_back_to_upstox_v2_when_v3_omits_due_session():
+    due=date(2026,9,18)
+    class MissingEnv:
+        source_ref="upstox:v3#missing"
+        payload={"status":"success","data":{"candles":[
+            ["2026-09-17T00:00:00+05:30",290,295,285,292,1000,0]
+        ]}}
+    class LegacyEnv:
+        source_ref="upstox:v2#exact"
+        payload={"status":"success","data":{"candles":[
+            ["2026-09-18T00:00:00+05:30",300,307,298,305,1200,0]
+        ]}}
+    class FallbackProvider:
+        def resolve_nse_equity(self,ticker): return ("NSE_EQ|X","X")
+        def daily(self,key,start,end): return MissingEnv()
+        def daily_legacy(self,key,start,end):
+            assert start==due and end==due
+            return LegacyEnv()
+    conn=Conn([(9,"EDGE-LTF-3","LTF","D+1",due)])
+    out=reconcile_overdue_checkpoints(
+        conn,FallbackProvider(),"LTF",datetime(2026,9,21,4,30,tzinfo=timezone.utc)
+    )
+    assert out[0].actual_price==305
+    assert out[0].source_ref=="upstox:v2#exact"

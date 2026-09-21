@@ -15,7 +15,7 @@ import hashlib
 import json
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
-from src.canonical_governance import register_recommendation_governance
+from src.canonical_governance import register_recommendation_governance_values
 
 
 @dataclass(frozen=True)
@@ -138,6 +138,7 @@ class CanonicalRecommendationWrite:
     research_bundle_id: Optional[str] = None
     canonical_requested_at: Optional[datetime] = None
     canonical_attempt_slot: Optional[str] = None
+    research_fresh_at: Optional[datetime] = None
     model_version: str = "EDGE_V1"
     command_type: str = "EDGE"
 
@@ -514,8 +515,14 @@ class AtomicNeonPersistenceAdapter:
                 "update edge_runs set status='COMMITTED' where run_id=%s",
                 (run_id,),
             )
-            register_recommendation_governance(
-                conn,bundle.recommendation_id,
+            register_recommendation_governance_values(
+                conn,
+                recommendation_id=bundle.recommendation_id,
+                ticker=bundle.ticker,
+                run_at=bundle.run_timestamp,
+                completed_at=datetime.now(bundle.run_timestamp.tzinfo),
+                horizon=bundle.forecast_horizon,
+                research_fresh_at=bundle.research_fresh_at,
                 requested_at=bundle.canonical_requested_at,
                 canonical_attempt_slot=bundle.canonical_attempt_slot,
             )

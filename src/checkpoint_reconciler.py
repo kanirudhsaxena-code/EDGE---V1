@@ -99,7 +99,14 @@ def reconcile_overdue_checkpoints(
         # remain unchanged and still fail closed if that session is absent.
         window_start = cp.due_date - timedelta(days=7)
         env=provider.daily(instrument_key,window_start,cp.due_date)
-        close,high,low=_candle_for_date(dict(env.payload),cp.due_date)
+        try:
+            close,high,low=_candle_for_date(dict(env.payload),cp.due_date)
+        except RuntimeError as exc:
+            if "no verified daily candle found" not in str(exc):
+                raise
+            legacy = provider.daily_legacy(instrument_key,cp.due_date,cp.due_date)
+            close,high,low=_candle_for_date(dict(legacy.payload),cp.due_date)
+            env = legacy
         observations.append(
             CheckpointObservation(
                 checkpoint_id=cp.checkpoint_id,

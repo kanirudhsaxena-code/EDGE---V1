@@ -186,6 +186,7 @@ def build_production_candidate(
         research_bundle_id=governed_research.bundle_id,
         canonical_requested_at=canonical_requested_at,
         canonical_attempt_slot=canonical_attempt_slot,
+        research_fresh_at=governed_research.research_fresh_at,
     )
     canonical=build_canonical_bundle(shadow,metadata)
     report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)

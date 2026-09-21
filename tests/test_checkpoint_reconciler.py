@@ -1,5 +1,7 @@
 from datetime import date, datetime, timezone
 
+# Upstox checkpoint fallback regression coverage
+
 from src.checkpoint_reconciler import (
     _candle_for_date,
     reconcile_overdue_checkpoints,

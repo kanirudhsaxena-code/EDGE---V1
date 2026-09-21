@@ -15,6 +15,8 @@ import hashlib
 import json
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
+from src.canonical_governance import register_recommendation_governance
+
 
 @dataclass(frozen=True)
 class CanonicalEvidenceWrite:
@@ -366,7 +368,7 @@ class AtomicNeonPersistenceAdapter:
                 insert into recommendation_lifecycle (
                   recommendation_id,tracking_policy,include_in_master_metrics,horizon_days,
                   expiry_trading_date,status,standard_model_capital,actual_user_executed
-                ) values (%s,%s,true,%s,%s,'OPEN',100,false)
+                ) values (%s,%s,false,%s,%s,'OPEN',100,false)
                 """,
                 (
                     bundle.recommendation_id,
@@ -510,6 +512,7 @@ class AtomicNeonPersistenceAdapter:
                 "update edge_runs set status='COMMITTED' where run_id=%s",
                 (run_id,),
             )
+            register_recommendation_governance(conn,bundle.recommendation_id)
             conn.commit()
             return bundle.recommendation_id
         except Exception:

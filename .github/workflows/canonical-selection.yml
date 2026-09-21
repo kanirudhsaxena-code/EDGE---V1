@@ -1,0 +1,44 @@
+name: EDGE Stocks Canonical Selection
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/canonical_governance.py'
+      - 'src/canonical_governance_cli.py'
+      - 'migrations/005_canonical_efficacy_timing.sql'
+      - '.github/workflows/canonical-selection.yml'
+  schedule:
+    - cron: '35 3 * * 1-5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-stocks-canonical-selection
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4" pytest
+      - name: Run canonical governance tests
+        run: python -m pytest -q tests/test_canonical_governance.py
+      - name: Finalize canonical selections
+        run: python -m src.canonical_governance_cli | tee edge-canonical-selection.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edge-canonical-selection
+          path: edge-canonical-selection.json
+          retention-days: 30

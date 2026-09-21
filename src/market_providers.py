@@ -94,7 +94,7 @@ def _stage_label(path: str) -> str:
         return "OPTION_CHAIN"
     if path.startswith("/v3/historical-candle/intraday/"):
         return "INTRADAY_CANDLE"
-    if path.startswith("/v3/historical-candle/"):
+    if path.startswith("/v3/historical-candle/") or path.startswith("/v2/historical-candle/"):
         return "HISTORICAL_CANDLE"
     if path.startswith("/v2/fundamentals/"):
         return "FUNDAMENTALS"
@@ -171,6 +171,7 @@ class UpstoxReadOnlyStockProvider:
         allowed_prefixes = (
             "/v3/historical-candle/intraday/",
             "/v3/historical-candle/",
+            "/v2/historical-candle/",
         )
         if path not in allowed_exact and not any(path.startswith(p) for p in allowed_prefixes):
             raise AcquisitionError("ENDPOINT_NOT_PERMITTED")
@@ -293,6 +294,15 @@ class UpstoxReadOnlyStockProvider:
                 # observable through cache-health checks and never alter EDGE logic.
                 pass
         return envelope
+
+    def daily_legacy(self, instrument_key: str, start: date, end: date) -> ProviderEnvelope:
+        """Fallback to Upstox V2 daily candles for checkpoint reconciliation only."""
+        if start > end or (end - start).days > 366:
+            raise AcquisitionError("INVALID_HISTORY_RANGE")
+        key = quote(instrument_key, safe="")
+        return self._get(
+            f"/v2/historical-candle/{key}/day/{end.isoformat()}/{start.isoformat()}"
+        )
 
     def market_holidays(self) -> ProviderEnvelope:
         return self._get("/v2/market/holidays")

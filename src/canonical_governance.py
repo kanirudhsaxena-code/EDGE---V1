@@ -95,61 +95,75 @@ def canonical_key(ticker:str,target:date,horizon:str)->str:
     return f"{ticker.strip().upper()}|{target.isoformat()}|{horizon.strip().upper()}"
 
 
+def register_recommendation_governance_values(
+    conn,*,recommendation_id:str,ticker:str,run_at:datetime,completed_at:datetime,
+    horizon:str,research_fresh_at:datetime|None=None,requested_at:datetime|None=None,
+    canonical_attempt_slot:str|None=None,
+)->dict:
+    requested_at=requested_at or run_at
+    classification=classify_stock_run(requested_at)
+    candidate_type=classification["candidate_type"]
+    if completed_at and completed_at.astimezone(IST) >= classification["hard_boundary_at"]:
+        candidate_type="DIAGNOSTIC_SNAPSHOT"
+    fallback_reason=(f"canonical_attempt_slot={canonical_attempt_slot}" if canonical_attempt_slot else None)
+    if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}:
+        if research_fresh_at is None or (requested_at-research_fresh_at).total_seconds() > 90*60:
+            candidate_type="DIAGNOSTIC_SNAPSHOT"
+            fallback_reason="Canonical eligibility blocked: governed stock research was not refreshed within 90 minutes of issuance."
+    key=canonical_key(ticker,classification["target_trading_date"],horizon)
+    cur=conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO edge_recommendation_governance(
+          recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,
+          candidate_type,requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,
+          research_fresh_at,fallback_reason
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (recommendation_id) DO NOTHING
+        """,
+        (
+            recommendation_id,key,str(ticker).upper(),classification["target_trading_date"],
+            horizon,candidate_type,requested_at,completed_at or run_at,
+            classification["ordinary_cutoff_at"],classification["hard_boundary_at"],
+            research_fresh_at,
+            (
+                ((fallback_reason + "; ") if fallback_reason else "")
+                + ("Overnight fallback requires no newer material governed research before selection."
+                   if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else "")
+            ) or None,
+        ),
+    )
+    return {**classification,"candidate_type":candidate_type,"canonical_key":key}
+
+
 def register_recommendation_governance(
     conn,recommendation_id:str,*,requested_at:datetime|None=None,
     canonical_attempt_slot:str|None=None,
 )->dict:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT r.ticker,r.run_timestamp,r.created_at,r.forecast_horizon,
-                   erb.research_fresh_at
-              FROM recommendations r
-              LEFT JOIN recommendation_research_bundle rrb USING(recommendation_id)
-              LEFT JOIN edge_research_bundles erb USING(bundle_id)
-             WHERE r.recommendation_id=%s
-             LIMIT 1
-            """,
-            (recommendation_id,),
-        )
-        row=cur.fetchone()
-        if not row:
-            raise ValueError("recommendation not found")
-        ticker,run_at,completed_at,horizon,research_fresh_at=row
-        requested_at=requested_at or run_at
-        classification=classify_stock_run(requested_at)
-        candidate_type=classification["candidate_type"]
-        if completed_at and completed_at.astimezone(IST) >= classification["hard_boundary_at"]:
-            candidate_type="DIAGNOSTIC_SNAPSHOT"
-        fallback_reason=(f"canonical_attempt_slot={canonical_attempt_slot}" if canonical_attempt_slot else None)
-        if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}:
-            if research_fresh_at is None or (run_at-research_fresh_at).total_seconds() > 90*60:
-                candidate_type="DIAGNOSTIC_SNAPSHOT"
-                fallback_reason="Canonical eligibility blocked: governed stock research was not refreshed within 90 minutes of issuance."
-        key=canonical_key(ticker,classification["target_trading_date"],horizon)
-        cur.execute(
-            """
-            INSERT INTO edge_recommendation_governance(
-              recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,
-              candidate_type,requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,
-              research_fresh_at,fallback_reason
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (recommendation_id) DO NOTHING
-            """,
-            (
-                recommendation_id,key,str(ticker).upper(),classification["target_trading_date"],
-                horizon,candidate_type,requested_at,completed_at or run_at,
-                classification["ordinary_cutoff_at"],classification["hard_boundary_at"],
-                research_fresh_at,
-                (
-                    ((fallback_reason + "; ") if fallback_reason else "")
-                    + ("Overnight fallback requires no newer material governed research before selection."
-                       if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else "")
-                ) or None,
-            ),
-        )
-    return {**classification,"candidate_type":candidate_type,"canonical_key":key}
-
+    """Compatibility loader for callers that only hold recommendation_id."""
+    cur=conn.cursor()
+    cur.execute(
+        """
+        SELECT r.ticker,r.run_timestamp,r.created_at,r.forecast_horizon,
+               erb.research_fresh_at
+          FROM recommendations r
+          LEFT JOIN recommendation_research_bundle rrb USING(recommendation_id)
+          LEFT JOIN edge_research_bundles erb USING(bundle_id)
+         WHERE r.recommendation_id=%s
+         LIMIT 1
+        """,
+        (recommendation_id,),
+    )
+    row=cur.fetchone()
+    if not row:
+        raise ValueError("recommendation not found")
+    ticker,run_at,completed_at,horizon,research_fresh_at=row
+    return register_recommendation_governance_values(
+        conn,recommendation_id=recommendation_id,ticker=ticker,run_at=run_at,
+        completed_at=completed_at or run_at,horizon=horizon,
+        research_fresh_at=research_fresh_at,requested_at=requested_at,
+        canonical_attempt_slot=canonical_attempt_slot,
+    )
 
 def _fallback_research_still_current(cur,ticker:str,recommendation_id:str,run_at:datetime,cutoff:datetime)->bool:
     cur.execute(

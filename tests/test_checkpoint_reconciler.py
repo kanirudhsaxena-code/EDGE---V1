@@ -42,8 +42,8 @@ class Provider:
     def resolve_nse_equity(self,ticker):
         return ("NSE_EQ|X","X")
     def daily(self,key,start,end):
-        assert start==end
-        return Env(start)
+        assert end-start == __import__('datetime').timedelta(days=7)
+        return Env(end)
 
 
 def test_candle_exact_date_is_required():
@@ -74,3 +74,26 @@ def test_today_checkpoint_before_close_is_not_overdue():
     )
     assert out==()
     assert conn.committed is False
+
+
+def test_reconciliation_uses_bounded_lookback_but_requires_exact_due_date():
+    due=date(2026,9,18)
+    class MultiEnv:
+        source_ref="upstox:daily#multi"
+        payload={"status":"success","data":{"candles":[
+            ["2026-09-17T00:00:00+05:30",290,295,285,292,1000,0],
+            ["2026-09-18T00:00:00+05:30",300,307,298,305,1200,0],
+        ]}}
+    class MultiProvider:
+        def resolve_nse_equity(self,ticker): return ("NSE_EQ|X","X")
+        def daily(self,key,start,end):
+            assert start==date(2026,9,11)
+            assert end==due
+            return MultiEnv()
+    conn=Conn([(8,"EDGE-LTF-2","LTF","D+1",due)])
+    out=reconcile_overdue_checkpoints(
+        conn,MultiProvider(),"LTF",datetime(2026,9,21,4,30,tzinfo=timezone.utc)
+    )
+    assert out[0].actual_price==305
+    assert out[0].period_high==307
+    assert out[0].period_low==298

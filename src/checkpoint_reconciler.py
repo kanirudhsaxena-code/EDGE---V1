@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any
 
@@ -92,7 +92,13 @@ def reconcile_overdue_checkpoints(
     instrument_key,_=provider.resolve_nse_equity(ticker)
     observations=[]
     for cp in due:
-        env=provider.daily(instrument_key,cp.due_date,cp.due_date)
+        # Upstox V3 historical candles can intermittently omit the requested
+        # session when queried as an exact one-day window. Request a small,
+        # bounded lookback window but still require an exact due-date candle.
+        # This changes retrieval resilience only; checkpoint scoring semantics
+        # remain unchanged and still fail closed if that session is absent.
+        window_start = cp.due_date - timedelta(days=7)
+        env=provider.daily(instrument_key,window_start,cp.due_date)
         close,high,low=_candle_for_date(dict(env.payload),cp.due_date)
         observations.append(
             CheckpointObservation(

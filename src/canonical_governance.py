@@ -95,7 +95,10 @@ def canonical_key(ticker:str,target:date,horizon:str)->str:
     return f"{ticker.strip().upper()}|{target.isoformat()}|{horizon.strip().upper()}"
 
 
-def register_recommendation_governance(conn,recommendation_id:str)->dict:
+def register_recommendation_governance(
+    conn,recommendation_id:str,*,requested_at:datetime|None=None,
+    canonical_attempt_slot:str|None=None,
+)->dict:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -113,9 +116,12 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
         if not row:
             raise ValueError("recommendation not found")
         ticker,run_at,completed_at,horizon,research_fresh_at=row
-        classification=classify_stock_run(run_at)
+        requested_at=requested_at or run_at
+        classification=classify_stock_run(requested_at)
         candidate_type=classification["candidate_type"]
-        fallback_reason=None
+        if completed_at and completed_at.astimezone(IST) >= classification["hard_boundary_at"]:
+            candidate_type="DIAGNOSTIC_SNAPSHOT"
+        fallback_reason=(f"canonical_attempt_slot={canonical_attempt_slot}" if canonical_attempt_slot else None)
         if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}:
             if research_fresh_at is None or (run_at-research_fresh_at).total_seconds() > 90*60:
                 candidate_type="DIAGNOSTIC_SNAPSHOT"
@@ -132,13 +138,14 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
             """,
             (
                 recommendation_id,key,str(ticker).upper(),classification["target_trading_date"],
-                horizon,candidate_type,run_at,completed_at or run_at,
+                horizon,candidate_type,requested_at,completed_at or run_at,
                 classification["ordinary_cutoff_at"],classification["hard_boundary_at"],
                 research_fresh_at,
-                fallback_reason or (
-                    "Overnight fallback requires no newer material governed research before selection."
-                    if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else None
-                ),
+                (
+                    ((fallback_reason + "; ") if fallback_reason else "")
+                    + ("Overnight fallback requires no newer material governed research before selection."
+                       if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else "")
+                ) or None,
             ),
         )
     return {**classification,"candidate_type":candidate_type,"canonical_key":key}

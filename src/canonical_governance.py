@@ -99,7 +99,7 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT r.ticker,r.run_timestamp,r.committed_at,r.forecast_horizon,
+            SELECT r.ticker,r.run_timestamp,r.created_at,r.forecast_horizon,
                    erb.research_fresh_at
               FROM recommendations r
               LEFT JOIN recommendation_research_bundle rrb USING(recommendation_id)
@@ -112,7 +112,7 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
         row=cur.fetchone()
         if not row:
             raise ValueError("recommendation not found")
-        ticker,run_at,committed_at,horizon,research_fresh_at=row
+        ticker,run_at,completed_at,horizon,research_fresh_at=row
         classification=classify_stock_run(run_at)
         candidate_type=classification["candidate_type"]
         fallback_reason=None
@@ -132,7 +132,7 @@ def register_recommendation_governance(conn,recommendation_id:str)->dict:
             """,
             (
                 recommendation_id,key,str(ticker).upper(),classification["target_trading_date"],
-                horizon,candidate_type,run_at,committed_at or run_at,
+                horizon,candidate_type,run_at,completed_at or run_at,
                 classification["ordinary_cutoff_at"],classification["hard_boundary_at"],
                 research_fresh_at,
                 fallback_reason or (

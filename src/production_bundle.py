@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from src.frozen_engine import BotInputs, compute_des, bot_hunter
@@ -47,6 +47,9 @@ class ProductionMetadata:
     active_override: Optional[str] = None
     rationale: Optional[str] = None
     research_bundle_id: Optional[str] = None
+    canonical_requested_at: Optional[datetime] = None
+    canonical_attempt_slot: Optional[str] = None
+    research_fresh_at: Optional[datetime] = None
 
 
 def build_canonical_bundle(
@@ -162,4 +165,7 @@ def build_canonical_bundle(
         execution_plan=metadata.execution_plan,
         checkpoint_dates=metadata.checkpoint_dates,
         research_bundle_id=metadata.research_bundle_id,
+        canonical_requested_at=metadata.canonical_requested_at,
+        canonical_attempt_slot=metadata.canonical_attempt_slot,
+        research_fresh_at=metadata.research_fresh_at,
     )

@@ -17,6 +17,12 @@ on:
       research_bundle_id:
         description: "Immutable EDGE_RESEARCH_BUNDLE_V1 id created by ChatGPT research orchestration"
         required: true
+      canonical_requested_at:
+        description: "Optional governed pre-open canonical request timestamp (ISO-8601)"
+        required: false
+      canonical_attempt_slot:
+        description: "Optional pre-open attempt slot label"
+        required: false
 
 permissions:
   contents: read
@@ -31,6 +37,8 @@ jobs:
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
       EDGE_RUN_MODE: ${{ github.event_name == 'schedule' && 'SCHEDULED' || 'MANUAL' }}
       EDGE_RESEARCH_BUNDLE_ID: ${{ inputs.research_bundle_id || '' }}
+      EDGE_CANONICAL_REQUESTED_AT: ${{ inputs.canonical_requested_at || '' }}
+      EDGE_CANONICAL_ATTEMPT_SLOT: ${{ inputs.canonical_attempt_slot || '' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:

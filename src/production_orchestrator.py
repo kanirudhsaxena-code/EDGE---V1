@@ -89,6 +89,8 @@ def build_production_candidate(
     release_approval: Optional[ReleaseApproval]=None,
     historical_cache: Any=None,
     research_bundle_id: Optional[str]=None,
+    canonical_requested_at: Optional[datetime]=None,
+    canonical_attempt_slot: Optional[str]=None,
 ) -> ProductionCandidateResult:
     if run_at.tzinfo is None:
         raise ValueError("run_at must be timezone-aware")
@@ -182,6 +184,9 @@ def build_production_candidate(
         active_override=shadow.event_override,
         rationale="Autonomous governed EDGE V1 production candidate with mandatory ChatGPT research validation.",
         research_bundle_id=governed_research.bundle_id,
+        canonical_requested_at=canonical_requested_at,
+        canonical_attempt_slot=canonical_attempt_slot,
+        research_fresh_at=governed_research.research_fresh_at,
     )
     canonical=build_canonical_bundle(shadow,metadata)
     report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)

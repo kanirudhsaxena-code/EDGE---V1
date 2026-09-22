@@ -127,3 +127,27 @@ def test_reconciliation_falls_back_to_upstox_v2_when_v3_omits_due_session():
     )
     assert out[0].actual_price==305
     assert out[0].source_ref=="upstox:v2#exact"
+
+
+def test_legacy_nse_holiday_checkpoint_rolls_forward_to_next_trading_session():
+    due=date(2026,9,14)  # NSE holiday
+    class HolidayEnv:
+        source_ref="upstox:v3#holiday-roll"
+        payload={"status":"success","data":{"candles":[
+            ["2026-09-15T00:00:00+05:30",300,306,294,304,1400,0]
+        ]}}
+    class HolidayProvider:
+        def resolve_nse_equity(self,ticker): return ("NSE_EQ|X","X")
+        def daily(self,key,start,end):
+            assert end==date(2026,9,15)
+            return HolidayEnv()
+        def daily_legacy(self,key,start,end):
+            raise AssertionError("legacy fallback should not be needed")
+    conn=Conn([(10,"EDGE-LTF-HOLIDAY","LTF","D+1",due)])
+    out=reconcile_overdue_checkpoints(
+        conn,HolidayProvider(),"LTF",datetime(2026,9,22,4,0,tzinfo=timezone.utc)
+    )
+    assert len(out)==1
+    assert out[0].actual_price==304
+    assert "calendar_rollforward:2026-09-14->2026-09-15" in out[0].source_ref
+    assert conn.committed is True

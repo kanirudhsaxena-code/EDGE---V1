@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   learning-cycle:
@@ -15,8 +15,11 @@ jobs:
     env:
       PYTHONPATH: .
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      LEARNING_HANDOFF_PATH: edge-learning-lab-handoff.json
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -26,10 +29,44 @@ jobs:
         run: |
           set -o pipefail
           python -m src.learning_cycle_cli | tee edge-learning-cycle.json
+      - name: Validate handoff firewall
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("edge-learning-lab-handoff.json",encoding="utf-8"))
+          assert p["schema_version"]=="MDOS_LEARNING_LAB_HANDOFF_V1"
+          assert p["engine"]=="EDGE_STOCKS"
+          assert p["methodology_changed"] is False
+          assert p["production_change_allowed"] is False
+          assert isinstance(p["observations"],list)
+          assert isinstance(p["candidates"],list)
+          assert isinstance(p["snapshot"],dict)
+          print("edge_learning_handoff_valid")
+          PY
+      - name: Publish immutable daily handoff to isolated state branch
+        run: |
+          set -euo pipefail
+          git fetch origin state/learning-lab-handoff
+          rm -rf /tmp/edge-learning-state
+          git worktree add /tmp/edge-learning-state origin/state/learning-lab-handoff
+          cd /tmp/edge-learning-state
+          mkdir -p runtime
+          cp "$GITHUB_WORKSPACE/$LEARNING_HANDOFF_PATH" runtime/edge-learning-lab-handoff.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/edge-learning-lab-handoff.json
+          if git diff --cached --quiet; then
+            echo "edge_learning_state_unchanged"
+            exit 0
+          fi
+          git commit -m "Update EDGE daily Learning Lab handoff [skip ci]"
+          git push origin HEAD:state/learning-lab-handoff
       - name: Upload cycle audit
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: edge-learning-cycle
-          path: edge-learning-cycle.json
+          path: |
+            edge-learning-cycle.json
+            edge-learning-lab-handoff.json
           retention-days: 30

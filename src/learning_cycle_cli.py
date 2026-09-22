@@ -11,6 +11,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .learning_snapshot import build_daily_snapshot, build_outcome_observation, content_hash
@@ -234,6 +235,22 @@ def main() -> int:
             )
 
         conn.commit()
+        handoff={
+            "schema_version":"MDOS_LEARNING_LAB_HANDOFF_V1",
+            "generated_at":now.astimezone(ZoneInfo("UTC")).isoformat().replace("+00:00","Z"),
+            "engine":"EDGE_STOCKS",
+            "snapshot":snapshot,
+            "observations":observations,
+            "candidates":[],
+            "methodology_changed":False,
+            "automatic_adoption_enabled":False,
+            "production_change_allowed":False,
+        }
+        handoff_path=Path(os.environ.get("LEARNING_HANDOFF_PATH","edge-learning-lab-handoff.json"))
+        handoff_path.write_text(
+            json.dumps(handoff,sort_keys=True,separators=(",",":"),default=str)+"\n",
+            encoding="utf-8",
+        )
         print(
             json.dumps(
                 {
@@ -241,8 +258,9 @@ def main() -> int:
                     "recommendation_sample_size": state.recommendation_sample_size,
                     "independent_sample_size": state.independent_sample_size,
                     "learning_run_id": None if inserted is None else inserted[0],
-                    "snapshot": snapshot,
+                    "snapshot_id": snapshot["snapshot_id"],
                     "observations_emitted": len(observations),
+                    "handoff_path":str(handoff_path),
                     "methodology_changed": False,
                     "automatic_adoption_enabled": False,
                     "production_change_allowed": False,

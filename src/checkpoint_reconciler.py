@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from typing import Any
 
 from src.market_providers import UpstoxReadOnlyStockProvider
+from src.canonical_governance import is_nse_day, next_nse_day
 
 IST=ZoneInfo("Asia/Kolkata")
 
@@ -92,21 +93,23 @@ def reconcile_overdue_checkpoints(
     instrument_key,_=provider.resolve_nse_equity(ticker)
     observations=[]
     for cp in due:
-        # Upstox V3 historical candles can intermittently omit the requested
-        # session when queried as an exact one-day window. Request a small,
-        # bounded lookback window but still require an exact due-date candle.
-        # This changes retrieval resilience only; checkpoint scoring semantics
-        # remain unchanged and still fail closed if that session is absent.
-        window_start = cp.due_date - timedelta(days=7)
-        env=provider.daily(instrument_key,window_start,cp.due_date)
+        # Legacy checkpoints can contain calendar dates that were not NSE sessions.
+        # Preserve the immutable checkpoint row, but observe it on the next actual
+        # NSE trading session. Real trading-day candle gaps still fail closed.
+        observation_date = cp.due_date if is_nse_day(cp.due_date) else next_nse_day(cp.due_date)
+        window_start = observation_date - timedelta(days=7)
+        env=provider.daily(instrument_key,window_start,observation_date)
         try:
-            close,high,low=_candle_for_date(dict(env.payload),cp.due_date)
+            close,high,low=_candle_for_date(dict(env.payload),observation_date)
         except RuntimeError as exc:
             if "no verified daily candle found" not in str(exc):
                 raise
-            legacy = provider.daily_legacy(instrument_key,cp.due_date,cp.due_date)
-            close,high,low=_candle_for_date(dict(legacy.payload),cp.due_date)
+            legacy = provider.daily_legacy(instrument_key,observation_date,observation_date)
+            close,high,low=_candle_for_date(dict(legacy.payload),observation_date)
             env = legacy
+        source_ref=env.source_ref
+        if observation_date != cp.due_date:
+            source_ref += f"|calendar_rollforward:{cp.due_date.isoformat()}->{observation_date.isoformat()}"
         observations.append(
             CheckpointObservation(
                 checkpoint_id=cp.checkpoint_id,
@@ -114,7 +117,7 @@ def reconcile_overdue_checkpoints(
                 period_high=high,
                 period_low=low,
                 observed_at=run_at,
-                source_ref=env.source_ref,
+                source_ref=source_ref,
             )
         )
 

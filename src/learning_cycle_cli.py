@@ -81,7 +81,7 @@ def main() -> int:
                   FROM learning_runs
                   WHERE (started_at AT TIME ZONE 'Asia/Kolkata')::date =
                         (now() AT TIME ZONE 'Asia/Kolkata')::date
-                    AND notes LIKE 'Autonomous Learning Lab cycle:%'
+                    AND notes LIKE 'Autonomous Learning Lab cycle:%%'
                 )
                 RETURNING learning_run_id
                 """,

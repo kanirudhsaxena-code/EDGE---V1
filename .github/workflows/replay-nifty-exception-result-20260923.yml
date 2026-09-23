@@ -1,0 +1,67 @@
+name: Replay 23 Sep NIFTY Exception Result
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/replay-nifty-exception-result-20260923.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONSOLE_URL: https://edge-console.k-anirudhsaxena.workers.dev
+      ARTIFACT_ID: '10732072694'
+      EXPECTED_RUN_ID: 5drrun_4160c0b7-e063-496b-80a1-ad5540c13a20
+      EXPECTED_REQUEST_ID: 5drreq_d2f611c4-24c2-4f22-8a43-e6a3612dff65
+    steps:
+      - name: Download exact frozen rescue envelope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --location --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o rescue.zip
+          unzip -q rescue.zip -d rescue
+          test -f rescue/envelope.json
+          python - <<'PY'
+          import json, os
+          p=json.load(open('rescue/envelope.json'))
+          assert p['run_id']==os.environ['EXPECTED_RUN_ID'], p.get('run_id')
+          assert p['request_id']==os.environ['EXPECTED_REQUEST_ID'], p.get('request_id')
+          assert p['status']=='SUCCESS', p.get('status')
+          assert p['published'] is True
+          print(f"verified_exact_envelope run_id={p['run_id']} request_id={p['request_id']} generated_at={p['generated_at']}")
+          PY
+
+      - name: Publish exact rescue envelope to repaired Console route
+        run: |
+          set -euo pipefail
+          code=$(curl --location --silent --show-error \
+            -o response.json -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            --data-binary @rescue/envelope.json \
+            "$CONSOLE_URL/api/5dr/runs")
+          cat response.json
+          echo
+          echo "http_code=$code"
+          test "$code" = "201"
+          python - <<'PY'
+          import json, os
+          p=json.load(open('response.json'))
+          assert p.get('ok') is True, p
+          assert p.get('run_id')==os.environ['EXPECTED_RUN_ID'], p
+          assert p.get('request_id')==os.environ['EXPECTED_REQUEST_ID'], p
+          assert p.get('published') is True, p
+          print('NIFTY_RESCUE_PERSISTED '+json.dumps(p,sort_keys=True))
+          PY

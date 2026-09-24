@@ -15,11 +15,11 @@ No broker order/trading action exists here.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from zoneinfo import ZoneInfo
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from src.assessment_context import load_assessment_context
 from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
@@ -37,6 +37,7 @@ from src.shadow_pipeline import compute_shadow_recommendation
 from src.state_recovery import recover_pre_run_state
 from src.trading_calendar import fetch_next_five_nse_trading_dates
 from src.upstox_research import UpstoxReadOnlyResearchProvider
+from src.zone_engine import MarketStructureContext
 from src.research_bundle import (
     load_governed_research_bundle,
     augment_acquired_evidence_with_research,
@@ -75,6 +76,51 @@ def _recommendation_text(action: str, option_status: str) -> str:
         return f"{action}; NO OPTION TRADE."
     suffix="" if option_status=="SUITABLE" else "; NO OPTION TRADE"
     return action + suffix + "."
+
+
+def _live_reference_price(payloads: Mapping[str, Mapping[str, Any]]) -> Optional[float]:
+    """Extract the authenticated Upstox LTP used as the production reference price.
+
+    Daily candles remain the source for completed-session trend calculations, but a
+    fresh intraday production run must never present the previous daily close as
+    the current/reference price.
+    """
+    for source_ref,payload in payloads.items():
+        if "/v3/market-quote/quotes" not in source_ref:
+            continue
+        data=payload.get("data") if isinstance(payload,Mapping) else None
+        if not isinstance(data,Mapping):
+            continue
+        candidates=[data]
+        candidates.extend(v for v in data.values() if isinstance(v,Mapping))
+        for row in candidates:
+            for key in ("last_price","ltp","last_traded_price"):
+                value=row.get(key)
+                try:
+                    price=float(value)
+                except (TypeError,ValueError):
+                    continue
+                if price>0:
+                    return price
+    return None
+
+
+def _rebase_structure_context(
+    ctx: MarketStructureContext,
+    reference_price: float,
+) -> MarketStructureContext:
+    """Re-anchor daily-derived structure around the fresh authenticated LTP."""
+    if reference_price<=0:
+        raise ValueError("reference_price must be positive")
+    levels=tuple(dict.fromkeys((*ctx.supports,*ctx.resistances)))
+    supports=tuple(sorted((x for x in levels if x<reference_price),reverse=True))
+    resistances=tuple(sorted(x for x in levels if x>reference_price))
+    return replace(
+        ctx,
+        close=float(reference_price),
+        supports=supports,
+        resistances=resistances,
+    )
 
 
 def build_production_candidate(
@@ -134,6 +180,27 @@ def build_production_candidate(
 
     analyst=ConservativeAutonomousInterpreter()
     interpretation=analyst(acquired.ticker,acquired.evidence,acquired.payloads,run_at)
+
+    # Trend/pattern scoring intentionally uses completed daily candles. Production
+    # reference price, expected zone and any execution geometry must instead use
+    # the fresh authenticated quote acquired for this run.
+    live_reference_price=_live_reference_price(acquired.payloads)
+    if live_reference_price is None:
+        return ProductionCandidateResult(
+            "BLOCKED_EVIDENCE",("fresh authenticated Upstox market quote is unavailable",),None,None,None
+        )
+    if interpretation.zone_context is None:
+        return ProductionCandidateResult(
+            "BLOCKED_EXECUTION",("verified market structure context is unavailable",),None,None,None
+        )
+    interpretation=replace(
+        interpretation,
+        zone_context=_rebase_structure_context(
+            interpretation.zone_context,
+            live_reference_price,
+        ),
+    )
+
     try:
         interpretation=apply_independent_research_validation(interpretation,governed_research)
     except ResearchReconciliationError as exc:
@@ -178,11 +245,11 @@ def build_production_candidate(
         definitive_recommendation=final_text,
         holding_status_known=known,
         event_shock_level=_event_level(shadow.event_override),
-        reference_price=interpretation.zone_context.close,
+        reference_price=live_reference_price,
         checkpoint_dates=checkpoint_dates,
         execution_plan=final.execution_plan,
         active_override=shadow.event_override,
-        rationale="Autonomous governed EDGE V1 production candidate with mandatory ChatGPT research validation.",
+        rationale="Autonomous governed EDGE V1 production candidate with mandatory ChatGPT research validation and fresh authenticated Upstox reference price.",
         research_bundle_id=governed_research.bundle_id,
         canonical_requested_at=canonical_requested_at,
         canonical_attempt_slot=canonical_attempt_slot,

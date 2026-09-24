@@ -52,8 +52,9 @@ jobs:
             with conn.cursor() as cur:
               cur.execute('''
                 SELECT r.recommendation_id,r.ticker,r.forecast_horizon,r.run_timestamp,r.created_at,
-                       r.reference_price, erb.research_fresh_at
+                       rp.reference_price, erb.research_fresh_at
                   FROM recommendations r
+                  JOIN recommendation_performance rp USING(recommendation_id)
                   JOIN recommendation_research_bundle rrb USING(recommendation_id)
                   JOIN edge_research_bundles erb USING(bundle_id)
                  WHERE upper(r.ticker)='LTF' AND rrb.bundle_id=%s
@@ -120,11 +121,11 @@ jobs:
 
               cur.execute('''
                 SELECT s.selection_status,s.canonical_type,s.selected_recommendation_id,
-                       l.include_in_master_metrics,g.candidate_type,r.reference_price
+                       l.include_in_master_metrics,g.candidate_type,rp.reference_price
                   FROM edge_canonical_selections s
                   JOIN recommendation_lifecycle l ON l.recommendation_id=s.selected_recommendation_id
                   JOIN edge_recommendation_governance g ON g.recommendation_id=s.selected_recommendation_id
-                  JOIN recommendations r ON r.recommendation_id=s.selected_recommendation_id
+                  JOIN recommendation_performance rp ON rp.recommendation_id=s.selected_recommendation_id
                  WHERE s.canonical_key=%s
               ''',(key,))
               verified=cur.fetchone()

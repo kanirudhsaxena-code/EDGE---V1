@@ -1,0 +1,75 @@
+import pytest
+
+from src.horizon_calibration_inputs import (
+    StockHorizonCalibrationEvidence,
+    calibration_evidence_payload,
+    validate_stock_horizon_calibration_evidence,
+)
+
+
+def evidence(**overrides):
+    values = dict(
+        symbol="LTF",
+        spot=268.0,
+        atr14=7.25,
+        realized_volatility_pct=31.4,
+        liquidity_ratio=1.35,
+        gap_risk_pct=2.1,
+        event_risk="MODERATE",
+        stock_regime="TREND",
+        sector_regime="RANGE",
+        sector_relative_strength_pct=1.8,
+        evidence_refs={
+            "price_history": "run:stock-daily",
+            "volatility": "derived:atr14-rv",
+            "liquidity": "derived:volume-ratio",
+            "regime": "run:stock-sector-context",
+        },
+    )
+    values.update(overrides)
+    return StockHorizonCalibrationEvidence(**values)
+
+
+def test_valid_stock_specific_calibration_evidence_is_shadow_only():
+    payload = calibration_evidence_payload(evidence())
+    assert payload["mode"] == "SHADOW"
+    assert payload["atr14"] == 7.25
+    assert payload["stock_regime"] == "TREND"
+    assert "probabilities" not in payload
+    assert "zone" not in payload
+
+
+def test_missing_lineage_reference_fails_closed():
+    with pytest.raises(ValueError, match="missing calibration evidence refs: liquidity"):
+        validate_stock_horizon_calibration_evidence(
+            evidence(evidence_refs={
+                "price_history": "p",
+                "volatility": "v",
+                "regime": "r",
+            })
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("spot", 0),
+        ("atr14", 0),
+        ("realized_volatility_pct", -1),
+        ("liquidity_ratio", 0),
+        ("gap_risk_pct", -0.1),
+    ],
+)
+def test_invalid_numeric_evidence_fails_closed(field, value):
+    with pytest.raises(ValueError):
+        validate_stock_horizon_calibration_evidence(evidence(**{field: value}))
+
+
+def test_unverified_event_risk_is_explicit_not_fabricated():
+    payload = calibration_evidence_payload(evidence(event_risk="UNVERIFIED"))
+    assert payload["event_risk"] == "UNVERIFIED"
+
+
+def test_unknown_event_risk_is_rejected():
+    with pytest.raises(ValueError, match="event_risk"):
+        validate_stock_horizon_calibration_evidence(evidence(event_risk="GUESS"))

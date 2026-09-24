@@ -82,4 +82,7 @@ def test_same_path_is_idempotent_and_different_content_fails_closed():
     digest=adapter.persist(path())
     conn2=Conn(); conn2.cur.existing=(digest,)
     assert ForecastPathPersistenceAdapter(lambda: conn2).persist(path())==digest
-    assert conn2.commits==0
+    # The adapter owns the transaction boundary, so even an idempotent read path
+    # closes successfully with one commit and performs no INSERTs.
+    assert conn2.commits==1 and conn2.rollbacks==0
+    assert not [call for call in conn2.cur.calls if "insert into edge_stock_forecast_path" in call[0]]

@@ -1,0 +1,93 @@
+name: Manual TATASTEEL EDGE 24 Sep 2026
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/manual-tatasteel-edge-20260924.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      EDGE_TICKER: TATASTEEL
+      EDGE_HOLDING_STATE: UNKNOWN
+      EDGE_RUN_MODE: MANUAL
+      EDGE_RESEARCH_BUNDLE_ID: EDGE-RESEARCH-TATASTEEL-20260924-DEEP-1548IST
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Insert immutable ChatGPT research bundle
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          import psycopg
+
+          fresh=datetime.now(timezone.utc)
+          fresh_iso=fresh.isoformat()
+          bundle_id=os.environ['EDGE_RESEARCH_BUNDLE_ID']
+          payload={
+            'contract_version':'EDGE_RESEARCH_BUNDLE_V1',
+            'research_authority':'CHATGPT',
+            'ticker':'TATASTEEL',
+            'research_fresh_at':fresh_iso,
+            'retrieval_providers':['CHATGPT_WEB'],
+            'sources':[
+              {'source_id':'S1','provider':'CHATGPT_WEB','url':'https://upstox.com/stocks/tata-steel-limited-share-price/','title':'Upstox Tata Steel share price, financials and ownership'},
+              {'source_id':'S2','provider':'CHATGPT_WEB','url':'https://www.financialexpress.com/market/tata-steel-jsw-steel-motilal-oswal-picks-top-stocks-as-steel-prices-hit-4-year-high-4343647/','title':'Financial Express: domestic steel prices at four-year high'},
+              {'source_id':'S3','provider':'CHATGPT_WEB','url':'https://www.financialexpress.com/policy/economy/zero-duty-access-securedfor-nearly-all-steel-exports-toeu-govt-4341475/','title':'Financial Express: India-EU steel export access'},
+              {'source_id':'S4','provider':'CHATGPT_WEB','url':'https://www.reuters.com/world/india/indias-tata-group-stocks-fall-reversing-some-gains-previous-session-2026-09-18/','title':'Reuters: Tata Group governance dispute'},
+              {'source_id':'S5','provider':'CHATGPT_WEB','url':'https://scanx.trade/stock-market-news/companies/tata-steel-schedules-analyst-meet-sep-24-hong-kong/51199565','title':'Tata Steel analyst meeting Sep 24'},
+              {'source_id':'S6','provider':'CHATGPT_WEB','url':'https://scanx.trade/stock-market-news/companies/tata-steel-schedules-hong-kong-investor-meet-september-25/51199888','title':'Tata Steel investor meeting Sep 25'}
+            ],
+            'claims':[
+              {'claim_id':'C1','evidence_category':'BUSINESS_FUNDAMENTALS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S1'],'claim':'FY26 revenue rose 6.12% YoY, operating profit 89.81% and net profit 242.99%; Jun-2026 quarter was sequentially softer, so the fundamental direction is positive but not unqualified.'},
+              {'claim_id':'C2','evidence_category':'VALUATION','verification_status':'VERIFIED','materiality':'LOW','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'Current public valuation metrics around P/E 21.15 and P/B 2.36 are verifiable, but without a clean peer-normalized comparison the research direction is neutral.'},
+              {'claim_id':'C3','evidence_category':'INSTITUTIONAL_BEHAVIOUR','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'FII holding increased to 19.37% by Jun-2026 while promoter and DII holdings declined in the cited snapshot, producing mixed rather than one-sided ownership evidence.'},
+              {'claim_id':'C4','evidence_category':'NEWS_EVENTS_CATALYSTS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S2','S3'],'claim':'Domestic steel pricing is reported near a four-year high and India steel consumption remains firm; EU quota access is supportive for exporters. Rising coking-coal costs and CBAM remain offsets.'},
+              {'claim_id':'C5','evidence_category':'EVENT_SHOCK','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S4','S5','S6'],'claim':'No direct Tata Steel binary operating event was identified for the five-day window, but scheduled investor meetings and Tata Group governance uncertainty justify non-zero event risk without a verified directional shock.'}
+            ]
+          }
+          canonical=json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False)
+          digest=hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute('''
+                INSERT INTO edge_research_bundles(
+                  bundle_id,ticker,contract_version,research_authority,research_fresh_at,created_at,payload,payload_hash,status
+                ) VALUES (%s,'TATASTEEL','EDGE_RESEARCH_BUNDLE_V1','CHATGPT',%s,%s,%s::jsonb,%s,'READY')
+                ON CONFLICT (bundle_id) DO NOTHING
+              ''',(bundle_id,fresh,fresh,canonical,digest))
+              cur.execute('SELECT bundle_id,ticker,status,research_fresh_at FROM edge_research_bundles WHERE bundle_id=%s',(bundle_id,))
+              row=cur.fetchone()
+              if not row: raise SystemExit('RESEARCH_BUNDLE_INSERT_FAILED')
+              print(json.dumps({'bundle_id':row[0],'ticker':row[1],'status':row[2],'research_fresh_at':row[3].isoformat()},sort_keys=True))
+            conn.commit()
+          PY
+      - name: Run governed production EDGE publisher
+        run: |
+          set -o pipefail
+          python -m src.autonomous_publish_cli | tee edge-tatasteel-publish.json
+      - name: Upload EDGE output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-tatasteel-20260924
+          path: |
+            edge-tatasteel-publish.json
+            edge-published-report.md
+          if-no-files-found: ignore
+          retention-days: 30

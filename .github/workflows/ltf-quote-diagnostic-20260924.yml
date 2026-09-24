@@ -1,4 +1,4 @@
-name: One-time LTF Quote Diagnostic 24 Sep
+name: One-time NIFTY + LTF Quote Diagnostic 24 Sep
 
 on:
   workflow_dispatch:
@@ -17,31 +17,43 @@ jobs:
     env:
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
     steps:
-      - name: Resolve LTF and inspect authenticated quote
+      - name: Inspect authenticated NIFTY and LTF live state
         run: |
           python - <<'PY'
           import json, os, urllib.parse, urllib.request
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
           token=os.environ['UPSTOX_ANALYTICS_TOKEN']
           base='https://api.upstox.com'
           def get(path, params=None):
               url=base+path
               if params: url += '?' + urllib.parse.urlencode(params)
-              req=urllib.request.Request(url,headers={'Accept':'application/json','Authorization':'Bearer '+token,'User-Agent':'EDGE-LTF-Diagnostic/1.0'})
+              req=urllib.request.Request(url,headers={'Accept':'application/json','Authorization':'Bearer '+token,'User-Agent':'EDGE-Market-Diagnostic/1.0'})
               with urllib.request.urlopen(req,timeout=30) as r:
                   return json.loads(r.read())
+          print('DIAGNOSTIC_IST='+datetime.now(ZoneInfo('Asia/Kolkata')).isoformat())
+
+          # LTF exact NSE equity identity + quote + intraday
           search=get('/v2/instruments/search',{'query':'LTF','exchanges':'NSE','segments':'EQ','page_number':'1','records':'30'})
           rows=search.get('data') or []
           exact=[r for r in rows if str(r.get('trading_symbol','')).upper()=='LTF' and r.get('segment')=='NSE_EQ' and r.get('instrument_type')=='EQ']
-          clean=[]
-          for r in exact:
-              clean.append({k:r.get(k) for k in ['trading_symbol','name','instrument_key','exchange_token','isin','segment','instrument_type']})
-          print('EXACT_MATCHES='+json.dumps(clean,sort_keys=True))
+          clean=[{k:r.get(k) for k in ['trading_symbol','name','instrument_key','exchange_token','isin','segment','instrument_type']} for r in exact]
+          print('LTF_EXACT_MATCHES='+json.dumps(clean,sort_keys=True))
           if len(exact)!=1: raise SystemExit('Expected exactly one LTF NSE_EQ match')
-          key=exact[0]['instrument_key']
-          quote=get('/v3/market-quote/quotes',{'instrument_key':key})
-          print('QUOTE_DATA='+json.dumps(quote.get('data'),sort_keys=True))
-          intraday=get('/v3/historical-candle/intraday/'+urllib.parse.quote(key,safe='')+'/minutes/1')
-          candles=((intraday.get('data') or {}).get('candles') or [])
-          print('INTRADAY_FIRST5='+json.dumps(candles[:5],sort_keys=True))
-          print('INTRADAY_LAST5='+json.dumps(candles[-5:],sort_keys=True))
+          ltf_key=exact[0]['instrument_key']
+          ltf_quote=get('/v3/market-quote/quotes',{'instrument_key':ltf_key})
+          print('LTF_QUOTE_DATA='+json.dumps(ltf_quote.get('data'),sort_keys=True))
+          ltf_intraday=get('/v3/historical-candle/intraday/'+urllib.parse.quote(ltf_key,safe='')+'/minutes/1')
+          ltf_candles=((ltf_intraday.get('data') or {}).get('candles') or [])
+          print('LTF_INTRADAY_FIRST10='+json.dumps(ltf_candles[:10],sort_keys=True))
+          print('LTF_INTRADAY_LAST10='+json.dumps(ltf_candles[-10:],sort_keys=True))
+
+          # NIFTY 50 exact index quote + intraday
+          nifty_key='NSE_INDEX|Nifty 50'
+          nifty_quote=get('/v3/market-quote/quotes',{'instrument_key':nifty_key})
+          print('NIFTY_QUOTE_DATA='+json.dumps(nifty_quote.get('data'),sort_keys=True))
+          nifty_intraday=get('/v3/historical-candle/intraday/'+urllib.parse.quote(nifty_key,safe='')+'/minutes/1')
+          nifty_candles=((nifty_intraday.get('data') or {}).get('candles') or [])
+          print('NIFTY_INTRADAY_FIRST10='+json.dumps(nifty_candles[:10],sort_keys=True))
+          print('NIFTY_INTRADAY_LAST10='+json.dumps(nifty_candles[-10:],sort_keys=True))
           PY

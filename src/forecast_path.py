@@ -108,6 +108,48 @@ def forecast_path_hash(path: ForecastPathWrite) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def persist_forecast_path_with_cursor(cur: Any, path: ForecastPathWrite) -> str:
+    """Append a validated path using the caller's open transaction.
+
+    This is the G5 atomic-binding primitive: callers that are already persisting
+    the parent recommendation can insert the SHADOW path before their single
+    commit. It never commits or rolls back on its own.
+    """
+    validate_forecast_path(path)
+    payload_hash = forecast_path_hash(path)
+    cur.execute(
+        "select payload_hash from edge_stock_forecast_paths where recommendation_id=%s limit 1",
+        (path.recommendation_id,),
+    )
+    existing = cur.fetchone()
+    if existing:
+        if str(existing[0]) != payload_hash:
+            raise RuntimeError("recommendation already has different immutable forecast-path content")
+        return payload_hash
+    cur.execute(
+        """insert into edge_stock_forecast_paths
+           (recommendation_id,path_version,source_run_id,issued_at,payload_hash)
+           values (%s,%s,%s,%s,%s)""",
+        (path.recommendation_id, path.version, path.source_run_id, path.issued_at, payload_hash),
+    )
+    for index, row in enumerate(path.rows):
+        cur.execute(
+            """insert into edge_stock_forecast_path_rows
+               (recommendation_id,horizon_index,horizon_label,target_trading_date,direction,
+                bull_probability,base_probability,bear_probability,expected_centre,
+                outer_expected_zone_low,outer_expected_zone_high,evidence_basis,regime_context,
+                verification_state,lineage)
+               values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (
+                path.recommendation_id,index,row.horizon_label,row.target_trading_date,row.direction,
+                row.bull_probability,row.base_probability,row.bear_probability,row.expected_centre,
+                row.outer_expected_zone_low,row.outer_expected_zone_high,row.evidence_basis,
+                row.regime_context,row.verification_state,json.dumps(dict(row.lineage),sort_keys=True),
+            ),
+        )
+    return payload_hash
+
+
 class ForecastPathPersistenceAdapter:
     """Append one immutable, already-governed five-row issuance path."""
 
@@ -115,41 +157,10 @@ class ForecastPathPersistenceAdapter:
         self._connection_factory = connection_factory
 
     def persist(self, path: ForecastPathWrite) -> str:
-        validate_forecast_path(path)
-        payload_hash = forecast_path_hash(path)
         conn = self._connection_factory()
         cur = conn.cursor()
         try:
-            cur.execute(
-                "select payload_hash from edge_stock_forecast_paths where recommendation_id=%s limit 1",
-                (path.recommendation_id,),
-            )
-            existing = cur.fetchone()
-            if existing:
-                if str(existing[0]) != payload_hash:
-                    raise RuntimeError("recommendation already has different immutable forecast-path content")
-                return payload_hash
-            cur.execute(
-                """insert into edge_stock_forecast_paths
-                   (recommendation_id,path_version,source_run_id,issued_at,payload_hash)
-                   values (%s,%s,%s,%s,%s)""",
-                (path.recommendation_id, path.version, path.source_run_id, path.issued_at, payload_hash),
-            )
-            for index, row in enumerate(path.rows):
-                cur.execute(
-                    """insert into edge_stock_forecast_path_rows
-                       (recommendation_id,horizon_index,horizon_label,target_trading_date,direction,
-                        bull_probability,base_probability,bear_probability,expected_centre,
-                        outer_expected_zone_low,outer_expected_zone_high,evidence_basis,regime_context,
-                        verification_state,lineage)
-                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (
-                        path.recommendation_id,index,row.horizon_label,row.target_trading_date,row.direction,
-                        row.bull_probability,row.base_probability,row.bear_probability,row.expected_centre,
-                        row.outer_expected_zone_low,row.outer_expected_zone_high,row.evidence_basis,
-                        row.regime_context,row.verification_state,json.dumps(dict(row.lineage),sort_keys=True),
-                    ),
-                )
+            payload_hash = persist_forecast_path_with_cursor(cur, path)
             conn.commit()
             return payload_hash
         except Exception:

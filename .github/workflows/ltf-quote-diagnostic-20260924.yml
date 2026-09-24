@@ -21,7 +21,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, urllib.parse, urllib.request
-          from datetime import datetime
+          from datetime import datetime, date
           from zoneinfo import ZoneInfo
           token=os.environ['UPSTOX_ANALYTICS_TOKEN']
           base='https://api.upstox.com'
@@ -33,7 +33,6 @@ jobs:
                   return json.loads(r.read())
           print('DIAGNOSTIC_IST='+datetime.now(ZoneInfo('Asia/Kolkata')).isoformat())
 
-          # LTF exact NSE equity identity + quote + intraday
           search=get('/v2/instruments/search',{'query':'LTF','exchanges':'NSE','segments':'EQ','page_number':'1','records':'30'})
           rows=search.get('data') or []
           exact=[r for r in rows if str(r.get('trading_symbol','')).upper()=='LTF' and r.get('segment')=='NSE_EQ' and r.get('instrument_type')=='EQ']
@@ -48,7 +47,27 @@ jobs:
           print('LTF_INTRADAY_FIRST10='+json.dumps(ltf_candles[:10],sort_keys=True))
           print('LTF_INTRADAY_LAST10='+json.dumps(ltf_candles[-10:],sort_keys=True))
 
-          # NIFTY 50 exact index quote + intraday
+          # LTF nearest option expiry and live chain, bounded around spot
+          contracts=get('/v2/option/contract',{'instrument_key':ltf_key})
+          crows=contracts.get('data') or []
+          expiries=sorted({str(r.get('expiry'))[:10] for r in crows if isinstance(r,dict) and r.get('expiry') and str(r.get('expiry'))[:10] >= str(date.today())})
+          if expiries:
+              expiry=expiries[0]
+              chain=get('/v2/option/chain',{'instrument_key':ltf_key,'expiry_date':expiry})
+              chainrows=chain.get('data') or []
+              spot=list((ltf_quote.get('data') or {}).values())[0].get('last_price')
+              bounded=[]
+              for r in chainrows:
+                  if not isinstance(r,dict): continue
+                  strike=float(r.get('strike_price') or 0)
+                  if spot and abs(strike-float(spot)) <= 35:
+                      ce=r.get('call_options') or {}; pe=r.get('put_options') or {}
+                      bounded.append({'strike':strike,'CE':ce,'PE':pe})
+              print('LTF_OPTION_EXPIRY='+expiry)
+              print('LTF_OPTION_CHAIN_BOUNDED='+json.dumps(bounded,sort_keys=True))
+          else:
+              print('LTF_OPTION_EXPIRY=NONE')
+
           nifty_key='NSE_INDEX|Nifty 50'
           nifty_quote=get('/v3/market-quote/quotes',{'instrument_key':nifty_key})
           print('NIFTY_QUOTE_DATA='+json.dumps(nifty_quote.get('data'),sort_keys=True))

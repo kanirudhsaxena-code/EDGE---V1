@@ -1,0 +1,153 @@
+name: Select 24 Sep LTF Exception Canonical
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/exception-canonical-override-20260924.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  override:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Select exact LTF rescue run as 24 Sep canonical
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import psycopg
+
+          bundle_id='EDGE-RESEARCH-LTF-20260924T093741IST'
+          expected_run_id='EDGE-LTF-20260924-040757-AUTO'
+          target_date='2026-09-24'
+          IST=ZoneInfo('Asia/Kolkata')
+          now=datetime.now(IST)
+          reason=(
+            'User-authorized EXCEPTION_CANONICAL for 2026-09-24. The scheduled pre-open canonical '
+            'was missed because the required research refresh was not available at the canonical window; '
+            'this is the fresh autonomous rescue run '
+            f'{expected_run_id}, actually requested at 09:37 IST with fresh governed research. Actual timestamps are preserved.'
+          )
+
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute('''
+                SELECT r.recommendation_id,r.ticker,r.forecast_horizon,r.run_timestamp,r.created_at,
+                       erb.research_fresh_at
+                  FROM recommendations r
+                  JOIN recommendation_research_bundle rrb USING(recommendation_id)
+                  JOIN edge_research_bundles erb USING(bundle_id)
+                 WHERE upper(r.ticker)='LTF' AND rrb.bundle_id=%s
+                 ORDER BY r.created_at DESC
+                 LIMIT 1
+              ''',(bundle_id,))
+              row=cur.fetchone()
+              if not row:
+                raise SystemExit('LTF_EXCEPTION_RECOMMENDATION_NOT_FOUND')
+              rec_id,ticker,horizon,run_at,completed_at,research_fresh_at=row
+              if rec_id != expected_run_id:
+                raise SystemExit(f'LTF_RUN_ID_MISMATCH got={rec_id} expected={expected_run_id}')
+              key=f'LTF|{target_date}|{str(horizon).upper()}'
+              print(f'exception_recommendation_id={rec_id} canonical_key={key}')
+
+              cur.execute('''
+                INSERT INTO edge_recommendation_governance(
+                  recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,
+                  candidate_type,requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,
+                  research_fresh_at,fallback_reason
+                ) VALUES (%s,%s,'LTF',%s,%s,'EXCEPTION_CANONICAL',%s,%s,
+                          %s::date + time '08:55:59',%s::date + time '09:00:00',%s,%s)
+                ON CONFLICT (recommendation_id) DO UPDATE SET
+                  canonical_key=EXCLUDED.canonical_key,
+                  ticker=EXCLUDED.ticker,
+                  target_trading_date=EXCLUDED.target_trading_date,
+                  forecast_horizon=EXCLUDED.forecast_horizon,
+                  candidate_type='EXCEPTION_CANONICAL',
+                  research_fresh_at=EXCLUDED.research_fresh_at,
+                  fallback_reason=EXCLUDED.fallback_reason
+              ''',(rec_id,key,target_date,horizon,run_at,completed_at or run_at,target_date,target_date,research_fresh_at,reason))
+
+              cur.execute('''
+                INSERT INTO edge_canonical_selections(
+                  canonical_key,ticker,target_trading_date,forecast_horizon,
+                  selection_status,canonical_type,selected_recommendation_id,selected_at,selection_reason
+                ) VALUES (%s,'LTF',%s,%s,'SELECTED','EXCEPTION_CANONICAL',%s,%s,%s)
+                ON CONFLICT (canonical_key) DO UPDATE SET
+                  ticker=EXCLUDED.ticker,
+                  target_trading_date=EXCLUDED.target_trading_date,
+                  forecast_horizon=EXCLUDED.forecast_horizon,
+                  selection_status='SELECTED',
+                  canonical_type='EXCEPTION_CANONICAL',
+                  selected_recommendation_id=EXCLUDED.selected_recommendation_id,
+                  selected_at=EXCLUDED.selected_at,
+                  selection_reason=EXCLUDED.selection_reason
+              ''',(key,target_date,horizon,rec_id,now,reason))
+
+              cur.execute('''
+                SELECT canonical_key FROM edge_canonical_selections
+                 WHERE ticker='LTF' AND target_trading_date=%s AND forecast_horizon=%s
+              ''',(target_date,horizon))
+              selected_key=cur.fetchone()[0]
+              if selected_key != key:
+                raise SystemExit(f'LTF_CANONICAL_KEY_MISMATCH selected={selected_key} expected={key}')
+
+              cur.execute('''
+                UPDATE recommendation_lifecycle l
+                   SET include_in_master_metrics=false,updated_at=now()
+                 WHERE l.recommendation_id IN (
+                   SELECT g.recommendation_id FROM edge_recommendation_governance g
+                    WHERE g.ticker='LTF' AND g.target_trading_date=%s AND g.forecast_horizon=%s
+                 )
+              ''',(target_date,horizon))
+              cur.execute('''
+                UPDATE recommendation_lifecycle
+                   SET include_in_master_metrics=true,updated_at=now()
+                 WHERE recommendation_id=%s
+              ''',(rec_id,))
+
+              cur.execute('''
+                SELECT s.selection_status,s.canonical_type,s.selected_recommendation_id,
+                       l.include_in_master_metrics,g.candidate_type,g.fallback_reason
+                  FROM edge_canonical_selections s
+                  JOIN recommendation_lifecycle l ON l.recommendation_id=s.selected_recommendation_id
+                  JOIN edge_recommendation_governance g ON g.recommendation_id=s.selected_recommendation_id
+                 WHERE s.canonical_key=%s
+              ''',(key,))
+              verified=cur.fetchone()
+              if not verified or verified[0]!='SELECTED' or verified[1]!='EXCEPTION_CANONICAL' or verified[2]!=rec_id or verified[3] is not True or verified[4]!='EXCEPTION_CANONICAL':
+                raise SystemExit(f'LTF_CANONICAL_VERIFY_FAILED {verified}')
+              out={
+                'status':'LTF_EXCEPTION_CANONICAL_CONFIRMED',
+                'target_trading_date':target_date,
+                'canonical_key':key,
+                'recommendation_id':rec_id,
+                'run_id':expected_run_id,
+                'research_bundle_id':bundle_id,
+                'canonical_type':verified[1],
+                'include_in_master_metrics':verified[3],
+                'selected_at':now.isoformat(),
+              }
+              print(json.dumps(out,sort_keys=True))
+              open('ltf-exception-canonical-confirmation.json','w').write(json.dumps(out,indent=2,sort_keys=True))
+            conn.commit()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ltf-exception-canonical-confirmation-20260924
+          path: ltf-exception-canonical-confirmation.json
+          if-no-files-found: ignore
+          retention-days: 30

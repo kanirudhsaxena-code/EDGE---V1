@@ -50,6 +50,26 @@ def test_missing_lineage_reference_fails_closed():
         )
 
 
+@pytest.mark.parametrize("evidence_refs", [None, [], "not-a-mapping"])
+def test_malformed_evidence_refs_fail_closed(evidence_refs):
+    with pytest.raises(ValueError, match="evidence_refs must be a mapping"):
+        validate_stock_horizon_calibration_evidence(evidence(evidence_refs=evidence_refs))
+
+
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("symbol", None, "symbol is required"),
+        ("event_risk", None, "event_risk"),
+        ("stock_regime", None, "stock_regime and sector_regime"),
+        ("sector_regime", None, "stock_regime and sector_regime"),
+    ],
+)
+def test_non_string_identity_and_regime_evidence_fails_closed(field, value, match):
+    with pytest.raises(ValueError, match=match):
+        validate_stock_horizon_calibration_evidence(evidence(**{field: value}))
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

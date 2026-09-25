@@ -1,0 +1,50 @@
+name: Inspect TATASTEEL Canonical 25 Sep 2026
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-tatasteel-canonical-20260925.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Read canonical selection and governed candidates
+        run: |
+          python - <<'PY'
+          import json, os, psycopg
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute("""
+                SELECT canonical_key,ticker,target_trading_date,forecast_horizon,
+                       selection_status,canonical_type,selected_recommendation_id,
+                       selected_at,selection_reason
+                  FROM edge_canonical_selections
+                 WHERE ticker='TATASTEEL' AND target_trading_date=DATE '2026-09-25'
+                 ORDER BY selected_at DESC
+              """)
+              selections=cur.fetchall()
+              cur.execute("""
+                SELECT recommendation_id,canonical_key,candidate_type,requested_at,
+                       completed_at,research_fresh_at,fallback_reason
+                  FROM edge_recommendation_governance
+                 WHERE ticker='TATASTEEL' AND target_trading_date=DATE '2026-09-25'
+                 ORDER BY requested_at
+              """)
+              candidates=cur.fetchall()
+          def conv(rows):
+            return [[v.isoformat() if hasattr(v,'isoformat') else v for v in r] for r in rows]
+          print(json.dumps({'selections':conv(selections),'candidates':conv(candidates)},sort_keys=True))
+          PY

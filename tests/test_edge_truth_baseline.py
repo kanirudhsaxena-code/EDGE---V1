@@ -91,6 +91,12 @@ def test_no_imputation_of_missing_provenance():
         validate_edge_truth_baseline(payload)
 
 
+def test_issuance_source_ref_requires_identity_time_and_hash():
+    payload = _baseline(); del payload["observations"][0]["source_refs"][0]["source"]; _rehash(payload)
+    with pytest.raises(BaselineValidationError, match="requires source, asof and hash"):
+        validate_edge_truth_baseline(payload)
+
+
 def test_mutated_frozen_observation_invalidates_hash():
     payload = _baseline(); payload["observations"][0]["spot"] = 101.0
     with pytest.raises(BaselineValidationError, match="baseline_hash"):

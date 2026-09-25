@@ -12,13 +12,15 @@ Define the reproducible evidence artifact required before G5 may derive stock/ho
 
 Each historical observation must identify the stock, issuance/as-of session, and D/D+1/D+2/D+3/D+4 target trading sessions. Issuance-time state must be attributable rather than reconstructed from future information. At minimum retain or reference ticker/stable instrument ID; timezone-aware issuance timestamp and exchange calendar/version; target horizon/session; issuance-time spot; ATR14/window; realised volatility/window; liquidity ratio; gap/event risk; stock/sector regime; source identifiers, source timestamps and immutable hashes; and matured target-session OHLC plus outcome source reference. UNKNOWN/UNVERIFIED must remain explicit when evidence is unavailable.
 
+For every ticker+issuance group the frozen artifact must additionally carry `session_sequences`: exactly five ordered target sessions corresponding to D,D+1,D+2,D+3,D+4, the same governed `trading_calendar_version` used by all five observation rows, and an attributable immutable `calendar_source_ref` containing source identity and hash. This is evidence of the exchange-session mapping; bare calendar-day arithmetic is not accepted as proof.
+
 No unavailable issuance-time field may be backfilled from later knowledge and represented as contemporaneous truth.
 
 ## Logic / Methodology
 
 1. The baseline is frozen evidence, not a forecasting model.
 2. Build observations only from attributable evidence whose as-of timing can be proven; every issuance-time source timestamp must be timezone-aware and no later than `issuance_asof`.
-3. Resolve D:D+4 with the governed exchange trading calendar; never substitute calendar-day offsets.
+3. Resolve D:D+4 with the governed exchange trading calendar; never substitute calendar-day offsets. Validation requires one complete horizon set per ticker+issuance group, unique/increasing target sessions, exact row-to-sequence equality, one calendar version across all five rows, and immutable calendar-source attribution. The validator does not invent exchange holidays.
 4. Keep raw observations separate from later calibration aggregates.
 5. Any later G5 calibration must expose sample size, coverage and provenance.
 6. Sparse evidence remains sparse: no horizon interpolation, NIFTY parameter copying, arbitrary probability decay or manufactured width multipliers.
@@ -27,9 +29,9 @@ No unavailable issuance-time field may be backfilled from later knowledge and re
 
 ## Output Contract
 
-A populated artifact exposes contract version; baseline ID/hash; generated timestamp; source-system/version references; observation/ticker/session counts; ticker+horizon coverage; missing/unverified counts; ordered immutable observations; matured outcome attribution; and zero production recommendation fields or promoted calibration parameters.
+A populated artifact exposes contract version; baseline ID/hash; generated timestamp; source-system/version references; observation/ticker/session counts; ticker+horizon coverage; missing/unverified counts; governed `session_sequences` proof; ordered immutable observations; matured outcome attribution; and zero production recommendation fields or promoted calibration parameters.
 
-A consumer fails closed when the artifact is missing, empty, hash-invalid, timing-unattributable, or insufficient for the claimed calibration slice.
+A consumer fails closed when the artifact is missing, empty, hash-invalid, timing-unattributable, exchange-session proof is missing/inconsistent, or insufficient for the claimed calibration slice.
 
 ## Safeguards / Dependencies
 
@@ -38,10 +40,11 @@ A consumer fails closed when the artifact is missing, empty, hash-invalid, timin
 - Does not authorize G6; G6 remains gated on G5 DONE.
 - Outcomes may be obtained after maturity, but issuance-time state must never use look-ahead information.
 - Baseline freezing precedes any claim that empirical calibration exists.
+- Calendar proof is provenance, not a new forecasting parameter or methodology.
 
 ## Acceptance
 
-2C-02 is not complete until a populated, reproducible artifact exists and validation proves schema completeness; immutable hash; exchange-session D:D+4 mapping; issuance-time provenance; no look-ahead leakage; explicit missingness; outcome attribution; and deterministic re-read/recalculation from the same frozen baseline.
+2C-02 is not complete until a populated, reproducible artifact exists and validation proves schema completeness; immutable hash; governed exchange-session D:D+4 mapping; issuance-time provenance; no look-ahead leakage; explicit missingness; outcome attribution; and deterministic re-read/recalculation from the same frozen baseline.
 
 G5 calibration remains outstanding until empirical calibration is derived from accepted populated evidence and separately reviewed/tested.
 
@@ -51,4 +54,6 @@ Approved authority: MDOS Master Programme Tracker → Phase 2.0 Fresh Plan, 2C-0
 
 2026-09-25 structural increment: `src/edge_truth_baseline.py` and `tests/test_edge_truth_baseline.py` pin non-empty observations, required evidence/provenance, exact coverage and rejection of production/calibration semantics. Contract head `e7feb46e` passed EDGE V1 CI #194 (run 36075726420). Structural validator head `560820b2` passed EDGE V1 CI #197 (run 36080058206).
 
-2026-09-25 integrity/timing increment: commits `2ab837f5` + `07d8c602` add deterministic baseline SHA-256 verification, timezone-aware generated/issuance/source timestamps, fail-closed rejection of issuance-time source evidence timestamped after issuance, and regression tests proving mutation invalidates the frozen hash and future provenance is rejected. Aligned contract head `c9249f51` passed EDGE V1 CI #200 (run 36084965592). This is evidence-governance hardening only: it does not populate historical evidence, prove exchange-calendar D:D+4 mapping, define calibration parameters, or complete 2C-02/G5.
+2026-09-25 integrity/timing increment: commits `2ab837f5` + `07d8c602` add deterministic baseline SHA-256 verification, timezone-aware generated/issuance/source timestamps, fail-closed rejection of issuance-time source evidence timestamped after issuance, and regression tests proving mutation invalidates the frozen hash and future provenance is rejected. Aligned contract head `c9249f51` passed EDGE V1 CI #200 (run 36084965592); documentation evidence head `1017033b` passed CI #201 (run 36085103003).
+
+2026-09-25 exchange-session proof increment: commits `04250f74` + `b0ef9c10` require complete ticker+issuance D:D+4 groups, unique/increasing target sessions, exact `session_sequences` row equality, a single governed calendar version and immutable calendar-source attribution. This closes the validator-side exchange-session proof gap only; it does not populate historical evidence or assert calendar correctness without a source. CI evidence for the aligned head is pending.

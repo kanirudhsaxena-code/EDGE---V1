@@ -72,4 +72,6 @@ G5 calibration remains outstanding until empirical calibration is derived from a
 
 Approved authority: MDOS Master Programme Tracker → Phase 2.0 Fresh Plan, 2C-02 parallel-safe frozen EDGE truth baseline and G5 evidence requirements.
 
-Repository evidence: this document freezes the baseline evidence contract only. It intentionally records no invented methodology and no calibration result. CI/PR evidence for implementation or populated-baseline tooling must be appended when available.
+Repository evidence: this document freezes the baseline evidence contract only. It intentionally records no invented methodology and no calibration result.
+
+2026-09-25 implementation-only validation increment: `src/edge_truth_baseline.py` adds a fail-closed structural validator for populated evidence and `tests/test_edge_truth_baseline.py` pins non-empty observations, required provenance/evidence fields, exact declared coverage and rejection of production/calibration semantics. This does **not** define the baseline hash algorithm, prove exchange-session mapping/timing attribution, populate historical evidence, or complete 2C-02/G5. Commits: `565f7f11` (validator), `fb07ae8a` (tests); CI evidence must be appended after the resulting head is tested.

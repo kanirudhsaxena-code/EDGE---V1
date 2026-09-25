@@ -165,8 +165,15 @@ def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
         if issuance > generated_at:
             raise BaselineValidationError(f"observation[{index}] issuance_asof is after generated_at")
         for ref_index, source_ref in enumerate(observation["source_refs"]):
-            if not isinstance(source_ref, Mapping) or not source_ref.get("hash") or not source_ref.get("asof"):
-                raise BaselineValidationError(f"observation[{index}].source_refs[{ref_index}] requires asof and hash")
+            if (
+                not isinstance(source_ref, Mapping)
+                or not source_ref.get("source")
+                or not source_ref.get("hash")
+                or not source_ref.get("asof")
+            ):
+                raise BaselineValidationError(
+                    f"observation[{index}].source_refs[{ref_index}] requires source, asof and hash"
+                )
             source_asof = _parse_timestamp(source_ref["asof"], f"observation[{index}].source_refs[{ref_index}].asof")
             if source_asof > issuance:
                 raise BaselineValidationError(f"observation[{index}] source provenance is after issuance_asof")

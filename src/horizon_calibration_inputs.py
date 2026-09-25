@@ -28,7 +28,7 @@ class StockHorizonCalibrationEvidence:
 
 
 def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEvidence) -> None:
-    if not e.symbol.strip():
+    if not isinstance(e.symbol, str) or not e.symbol.strip():
         raise ValueError("symbol is required")
     numeric_fields = {
         "spot": e.spot,
@@ -52,10 +52,17 @@ def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEviden
         raise ValueError("liquidity_ratio must be positive")
     if e.gap_risk_pct < 0:
         raise ValueError("gap_risk_pct cannot be negative")
-    if e.event_risk not in {"NONE", "LOW", "MODERATE", "HIGH", "UNVERIFIED"}:
+    if not isinstance(e.event_risk, str) or e.event_risk not in {"NONE", "LOW", "MODERATE", "HIGH", "UNVERIFIED"}:
         raise ValueError("event_risk must use the governed stock evidence vocabulary")
-    if not e.stock_regime.strip() or not e.sector_regime.strip():
+    if (
+        not isinstance(e.stock_regime, str)
+        or not e.stock_regime.strip()
+        or not isinstance(e.sector_regime, str)
+        or not e.sector_regime.strip()
+    ):
         raise ValueError("stock_regime and sector_regime are required")
+    if not isinstance(e.evidence_refs, Mapping):
+        raise ValueError("evidence_refs must be a mapping")
     required_refs = {"price_history", "volatility", "liquidity", "regime"}
     missing = sorted(k for k in required_refs if not str(e.evidence_refs.get(k, "")).strip())
     if missing:

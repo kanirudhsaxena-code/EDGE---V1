@@ -8,6 +8,7 @@ production recommendation logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Mapping, Optional
 
 
@@ -29,6 +30,18 @@ class StockHorizonCalibrationEvidence:
 def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEvidence) -> None:
     if not e.symbol.strip():
         raise ValueError("symbol is required")
+    numeric_fields = {
+        "spot": e.spot,
+        "atr14": e.atr14,
+        "realized_volatility_pct": e.realized_volatility_pct,
+        "liquidity_ratio": e.liquidity_ratio,
+        "gap_risk_pct": e.gap_risk_pct,
+    }
+    if e.sector_relative_strength_pct is not None:
+        numeric_fields["sector_relative_strength_pct"] = e.sector_relative_strength_pct
+    for field, value in numeric_fields.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise ValueError(f"{field} must be a finite number")
     if e.spot <= 0:
         raise ValueError("spot must be positive")
     if e.atr14 <= 0:

@@ -7,6 +7,7 @@ groups so bounded attributable subsets can be frozen without hiding rejected row
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
 from src.edge_truth_baseline import HORIZONS
@@ -81,9 +82,9 @@ def extract_complete_evidence_subset(
     """
     audit = audit_candidate_evidence(observations, session_sequences)
     accepted = set(audit["accepted_complete_groups"])
-    rows = [dict(row) for row in observations if _group_key(row) in accepted]
+    rows = [deepcopy(dict(row)) for row in observations if _group_key(row) in accepted]
     rows.sort(key=lambda row: (_group_key(row), HORIZONS.index(str(row["horizon"]))))
-    proofs = {key: dict(session_sequences[key]) for key in sorted(accepted)}
+    proofs = {key: deepcopy(dict(session_sequences[key])) for key in sorted(accepted)}
     return {
         "observations": rows,
         "session_sequences": proofs,

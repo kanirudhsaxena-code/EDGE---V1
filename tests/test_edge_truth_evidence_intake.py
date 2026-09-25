@@ -1,4 +1,4 @@
-from src.edge_truth_evidence_intake import audit_candidate_evidence
+from src.edge_truth_evidence_intake import audit_candidate_evidence, extract_complete_evidence_subset
 
 HORIZONS = ("D", "D+1", "D+2", "D+3", "D+4")
 SESSIONS = ("2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07")
@@ -46,3 +46,28 @@ def test_reports_missing_and_orphan_session_proofs():
     item = audit["rejected_groups"][f"TEST|{ISSUANCE}"]
     assert "MISSING_SESSION_SEQUENCE" in item["reasons"]
     assert audit["orphan_session_sequences"] == ["ORPHAN|2026-01-01"]
+
+
+def test_extracts_only_complete_groups_and_keeps_rejection_accounting():
+    complete = _rows("GOOD")
+    incomplete = _rows("BAD")[:-1]
+    sequences = {**_sequences("GOOD"), **_sequences("BAD")}
+    subset = extract_complete_evidence_subset(complete + incomplete, sequences)
+
+    assert [row["ticker"] for row in subset["observations"]] == ["GOOD"] * 5
+    assert list(subset["session_sequences"]) == [f"GOOD|{ISSUANCE}"]
+    assert subset["audit"]["accepted_group_count"] == 1
+    assert subset["audit"]["rejected_group_count"] == 1
+    assert subset["audit"]["candidate_row_count"] == 9
+    assert subset["audit"]["rejected_groups"][f"BAD|{ISSUANCE}"]["missing_horizons"] == ["D+4"]
+
+
+def test_subset_does_not_mutate_supplied_observations_or_proofs():
+    rows = _rows("GOOD")
+    sequences = _sequences("GOOD")
+    subset = extract_complete_evidence_subset(rows, sequences)
+    subset["observations"][0]["target_session"] = "CHANGED"
+    subset["session_sequences"][f"GOOD|{ISSUANCE}"]["sessions"] = []
+
+    assert rows[0]["target_session"] == SESSIONS[0]
+    assert sequences[f"GOOD|{ISSUANCE}"]["sessions"] == list(SESSIONS)

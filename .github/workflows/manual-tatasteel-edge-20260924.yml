@@ -1,4 +1,4 @@
-name: Manual TATASTEEL EDGE 24 Sep 2026
+name: Manual TATASTEEL EDGE 25 Sep 2026
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       EDGE_TICKER: TATASTEEL
       EDGE_HOLDING_STATE: UNKNOWN
       EDGE_RUN_MODE: MANUAL
-      EDGE_RESEARCH_BUNDLE_ID: EDGE-RESEARCH-TATASTEEL-20260924-DEEP-1548IST
+      EDGE_RESEARCH_BUNDLE_ID: EDGE-RESEARCH-TATASTEEL-20260925-DEEP-1059IST
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,18 +47,18 @@ jobs:
             'retrieval_providers':['CHATGPT_WEB'],
             'sources':[
               {'source_id':'S1','provider':'CHATGPT_WEB','url':'https://upstox.com/stocks/tata-steel-limited-share-price/','title':'Upstox Tata Steel share price, financials and ownership'},
-              {'source_id':'S2','provider':'CHATGPT_WEB','url':'https://www.financialexpress.com/market/tata-steel-jsw-steel-motilal-oswal-picks-top-stocks-as-steel-prices-hit-4-year-high-4343647/','title':'Financial Express: domestic steel prices at four-year high'},
-              {'source_id':'S3','provider':'CHATGPT_WEB','url':'https://www.financialexpress.com/policy/economy/zero-duty-access-securedfor-nearly-all-steel-exports-toeu-govt-4341475/','title':'Financial Express: India-EU steel export access'},
-              {'source_id':'S4','provider':'CHATGPT_WEB','url':'https://www.reuters.com/world/india/indias-tata-group-stocks-fall-reversing-some-gains-previous-session-2026-09-18/','title':'Reuters: Tata Group governance dispute'},
-              {'source_id':'S5','provider':'CHATGPT_WEB','url':'https://scanx.trade/stock-market-news/companies/tata-steel-schedules-analyst-meet-sep-24-hong-kong/51199565','title':'Tata Steel analyst meeting Sep 24'},
-              {'source_id':'S6','provider':'CHATGPT_WEB','url':'https://scanx.trade/stock-market-news/companies/tata-steel-schedules-hong-kong-investor-meet-september-25/51199888','title':'Tata Steel investor meeting Sep 25'}
+              {'source_id':'S2','provider':'CHATGPT_WEB','url':'https://www.financialexpress.com/market/stock-insights/india-is-outpacing-china-in-steel-growth-3-stocks-to-watch-in-the-boom/4344103/','title':'Financial Express: India outpacing China in steel growth'},
+              {'source_id':'S3','provider':'CHATGPT_WEB','url':'https://www.reuters.com/business/energy/eu-impose-provisional-safeguards-protect-electrical-steel-imports-2026-09-18/','title':'Reuters: EU electrical steel safeguards effective Sep 25'},
+              {'source_id':'S4','provider':'CHATGPT_WEB','url':'https://www.reuters.com/commentary/breakingviews/markets-are-slow-grasp-depths-tata-mess-2026-09-18/','title':'Reuters Breakingviews: Tata Group governance uncertainty'},
+              {'source_id':'S5','provider':'CHATGPT_WEB','url':'https://scanx.trade/stock-market-news/companies/tata-steel-schedules-hong-kong-investor-meet-september-25/51199888','title':'Tata Steel Hong Kong investor meeting Sep 25'},
+              {'source_id':'S6','provider':'CHATGPT_WEB','url':'https://hdfcsky.com/news/stock-markets-rebound-amid-easing-crude-oil-prices-sensex-up-299-points','title':'HDFC Sky: Tata Steel among top gainers in Sep 24 rebound'}
             ],
             'claims':[
-              {'claim_id':'C1','evidence_category':'BUSINESS_FUNDAMENTALS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S1'],'claim':'FY26 revenue rose 6.12% YoY, operating profit 89.81% and net profit 242.99%; Jun-2026 quarter was sequentially softer, so the fundamental direction is positive but not unqualified.'},
-              {'claim_id':'C2','evidence_category':'VALUATION','verification_status':'VERIFIED','materiality':'LOW','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'Current public valuation metrics around P/E 21.15 and P/B 2.36 are verifiable, but without a clean peer-normalized comparison the research direction is neutral.'},
-              {'claim_id':'C3','evidence_category':'INSTITUTIONAL_BEHAVIOUR','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'FII holding increased to 19.37% by Jun-2026 while promoter and DII holdings declined in the cited snapshot, producing mixed rather than one-sided ownership evidence.'},
-              {'claim_id':'C4','evidence_category':'NEWS_EVENTS_CATALYSTS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S2','S3'],'claim':'Domestic steel pricing is reported near a four-year high and India steel consumption remains firm; EU quota access is supportive for exporters. Rising coking-coal costs and CBAM remain offsets.'},
-              {'claim_id':'C5','evidence_category':'EVENT_SHOCK','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S4','S5','S6'],'claim':'No direct Tata Steel binary operating event was identified for the five-day window, but scheduled investor meetings and Tata Group governance uncertainty justify non-zero event risk without a verified directional shock.'}
+              {'claim_id':'C1','evidence_category':'BUSINESS_FUNDAMENTALS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S1','S2'],'claim':'Tata Steel entered FY27 with supportive India steel growth and FY26 production/capacity momentum. Public financial data remain fundamentally positive on a year-on-year basis, though quarter-to-quarter softness prevents an unqualified bullish score.'},
+              {'claim_id':'C2','evidence_category':'VALUATION','verification_status':'VERIFIED','materiality':'LOW','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'Current public valuation metrics are verifiable but do not establish a sufficiently robust peer-normalized discount or premium for a directional valuation call, so valuation remains neutral.'},
+              {'claim_id':'C3','evidence_category':'INSTITUTIONAL_BEHAVIOUR','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S1'],'claim':'The latest cited ownership snapshot remains mixed, with higher FII ownership offset by declines in other holder categories; institutional direction is therefore neutral rather than one-sided.'},
+              {'claim_id':'C4','evidence_category':'NEWS_EVENTS_CATALYSTS','verification_status':'VERIFIED','materiality':'MODERATE','direction':'POSITIVE','independent_validation':True,'source_ids':['S2','S6'],'claim':'India steel growth remains supportive and Tata Steel was among the stronger names in the Sep 24 market rebound. This is a positive cyclical and near-term sentiment catalyst, tempered by broader macro volatility.'},
+              {'claim_id':'C5','evidence_category':'EVENT_SHOCK','verification_status':'VERIFIED','materiality':'MODERATE','direction':'NEUTRAL','independent_validation':True,'source_ids':['S3','S4','S5'],'claim':'Today includes a scheduled Tata Steel Hong Kong investor meeting, while EU steel safeguards and ongoing Tata Group governance uncertainty add event sensitivity. No independently verified binary Tata Steel operating shock was found, so event-shock direction remains neutral with non-zero risk.'}
             ]
           }
           canonical=json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False)
@@ -85,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: edge-tatasteel-20260924
+          name: edge-tatasteel-20260925-1059
           path: |
             edge-tatasteel-publish.json
             edge-published-report.md

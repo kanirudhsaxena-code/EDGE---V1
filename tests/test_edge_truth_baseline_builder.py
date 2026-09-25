@@ -63,8 +63,9 @@ def test_builder_is_deterministic_for_same_evidence_and_freeze_time():
 
 def test_builder_does_not_impute_missing_evidence():
     rows = _rows(); rows[0]["atr14"] = None
-    with pytest.raises(Exception, match="atr14"):
-        _build(rows)
+    artifact = _build(rows)
+    assert artifact["observations"][0]["atr14"] is None
+    assert artifact["missing_unverified_counts"]["atr14"] == 1
 
 
 def test_builder_fails_closed_on_incomplete_horizon_group():

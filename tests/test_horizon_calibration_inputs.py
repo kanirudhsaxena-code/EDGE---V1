@@ -40,7 +40,7 @@ def test_valid_stock_specific_calibration_evidence_is_shadow_only():
 
 
 def test_missing_lineage_reference_fails_closed():
-    with pytest.raises(ValueError, match="missing calibration evidence refs: liquidity"):
+    with pytest.raises(ValueError, match="missing or invalid calibration evidence refs: liquidity"):
         validate_stock_horizon_calibration_evidence(
             evidence(evidence_refs={
                 "price_history": "p",
@@ -54,6 +54,19 @@ def test_missing_lineage_reference_fails_closed():
 def test_malformed_evidence_refs_fail_closed(evidence_refs):
     with pytest.raises(ValueError, match="evidence_refs must be a mapping"):
         validate_stock_horizon_calibration_evidence(evidence(evidence_refs=evidence_refs))
+
+
+@pytest.mark.parametrize("bad_value", [None, 0, False, [], {}, object()])
+def test_non_string_required_evidence_reference_values_fail_closed(bad_value):
+    refs = {
+        "price_history": "p",
+        "volatility": "v",
+        "liquidity": "l",
+        "regime": "r",
+    }
+    refs["volatility"] = bad_value
+    with pytest.raises(ValueError, match="missing or invalid calibration evidence refs: volatility"):
+        validate_stock_horizon_calibration_evidence(evidence(evidence_refs=refs))
 
 
 @pytest.mark.parametrize(

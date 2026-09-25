@@ -48,6 +48,26 @@ def test_reports_missing_and_orphan_session_proofs():
     assert audit["orphan_session_sequences"] == ["ORPHAN|2026-01-01"]
 
 
+def test_rejects_complete_shape_when_group_identity_or_target_session_is_missing():
+    rows = _rows("")
+    rows[0]["target_session"] = ""
+    key = f"|{ISSUANCE}"
+    sequences = {key: {"sessions": ["", *SESSIONS[1:]]}}
+    audit = audit_candidate_evidence(rows, sequences)
+    item = audit["rejected_groups"][key]
+
+    assert audit["accepted_group_count"] == 0
+    assert "MISSING_TICKER" in item["reasons"]
+    assert "MISSING_TARGET_SESSION" in item["reasons"]
+
+    rows = _rows("TEST")
+    for row in rows:
+        row["issuance_asof"] = ""
+    sequences = {"TEST|": {"sessions": list(SESSIONS)}}
+    item = audit_candidate_evidence(rows, sequences)["rejected_groups"]["TEST|"]
+    assert "MISSING_ISSUANCE_ASOF" in item["reasons"]
+
+
 def test_extracts_only_complete_groups_and_keeps_rejection_accounting():
     complete = _rows("GOOD")
     incomplete = _rows("BAD")[:-1]

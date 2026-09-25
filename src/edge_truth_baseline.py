@@ -53,6 +53,21 @@ def _parse_timestamp(value: Any, label: str) -> datetime:
     return parsed
 
 
+def _validate_source_systems(value: Any) -> None:
+    """Require attributable source-system/version declarations for the frozen artifact."""
+    if not isinstance(value, list) or not value:
+        raise BaselineValidationError("source_systems must be a non-empty list")
+    for index, source_system in enumerate(value):
+        if not isinstance(source_system, Mapping):
+            raise BaselineValidationError(f"source_systems[{index}] must be an object")
+        identity = source_system.get("name") or source_system.get("source")
+        version_ref = source_system.get("version") or source_system.get("reference") or source_system.get("ref")
+        if not identity or not version_ref:
+            raise BaselineValidationError(
+                f"source_systems[{index}] requires source/name identity and version/reference"
+            )
+
+
 def _validate_target_ohlc(value: Any, label: str) -> None:
     """Require attributable matured OHLC to be complete and geometrically possible."""
     if not isinstance(value, Mapping):
@@ -128,6 +143,7 @@ def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
         raise BaselineValidationError(f"missing top-level fields: {', '.join(missing)}")
 
     generated_at = _parse_timestamp(payload["generated_at"], "generated_at")
+    _validate_source_systems(payload["source_systems"])
     observations = payload["observations"]
     if not isinstance(observations, list) or not observations:
         raise BaselineValidationError("observations must be a non-empty list")

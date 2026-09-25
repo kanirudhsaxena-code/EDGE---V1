@@ -35,6 +35,12 @@ def audit_candidate_evidence(
         unexpected = sorted(h for h in horizon_counts if h not in HORIZONS)
         sequence = session_sequences.get(key)
         reasons: list[str] = []
+        if any(not str(row.get("ticker", "")).strip() for row in rows):
+            reasons.append("MISSING_TICKER")
+        if any(not str(row.get("issuance_asof", "")).strip() for row in rows):
+            reasons.append("MISSING_ISSUANCE_ASOF")
+        if any(not str(row.get("target_session", "")).strip() for row in rows):
+            reasons.append("MISSING_TARGET_SESSION")
         if missing:
             reasons.append("MISSING_HORIZONS")
         if duplicates:

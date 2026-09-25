@@ -111,16 +111,12 @@ def test_naive_provenance_timestamp_fails_closed():
 
 def test_calendar_sequence_must_match_horizon_rows():
     payload = _baseline(); payload["session_sequences"][next(iter(payload["session_sequences"]))]["sessions"][4] = "2026-09-06"; _rehash(payload)
-    # Keep the proof ordered and unique so this fixture isolates row-to-sequence equality
-    # rather than being rejected earlier by the independent ordering invariant.
     with pytest.raises(BaselineValidationError, match="does not match"):
         validate_edge_truth_baseline(payload)
 
 
 def test_calendar_sequence_rejects_calendar_day_weekend_fabrication():
     payload = _baseline(); key = next(iter(payload["session_sequences"])); payload["session_sequences"][key]["sessions"] = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"]; payload["observations"][4]["target_session"] = "2026-09-05"; _rehash(payload)
-    # The validator cannot infer holidays/weekends; it therefore requires an attributable
-    # governed calendar proof. Removing that proof fails closed rather than accepting dates.
     del payload["session_sequences"][key]["calendar_source_ref"]
     _rehash(payload)
     with pytest.raises(BaselineValidationError, match="calendar_source_ref"):
@@ -130,4 +126,33 @@ def test_calendar_sequence_rejects_calendar_day_weekend_fabrication():
 def test_calendar_version_must_match_all_five_horizons():
     payload = _baseline(); payload["observations"][3]["trading_calendar_version"] = "NSE:other"; _rehash(payload)
     with pytest.raises(BaselineValidationError, match="calendar version mismatch"):
+        validate_edge_truth_baseline(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("high", 98.0, "low cannot exceed high"),
+        ("open", 103.0, "open must lie within low/high"),
+        ("close", 98.0, "close must lie within low/high"),
+        ("close", float("inf"), "finite number"),
+    ],
+)
+def test_invalid_matured_ohlc_fails_closed(field, value, message):
+    payload = _baseline(); payload["observations"][0]["target_ohlc"][field] = value
+    if value != float("inf"):
+        _rehash(payload)
+    with pytest.raises((BaselineValidationError, ValueError), match=message if value != float("inf") else "finite|Out of range|compliant"):
+        validate_edge_truth_baseline(payload)
+
+
+def test_incomplete_matured_ohlc_fails_closed():
+    payload = _baseline(); del payload["observations"][0]["target_ohlc"]["close"]; _rehash(payload)
+    with pytest.raises(BaselineValidationError, match="target_ohlc missing fields"):
+        validate_edge_truth_baseline(payload)
+
+
+def test_outcome_source_requires_identity_and_hash():
+    payload = _baseline(); payload["observations"][0]["outcome_source_ref"] = {"source": "fixture"}; _rehash(payload)
+    with pytest.raises(BaselineValidationError, match="outcome_source_ref requires source and hash"):
         validate_edge_truth_baseline(payload)

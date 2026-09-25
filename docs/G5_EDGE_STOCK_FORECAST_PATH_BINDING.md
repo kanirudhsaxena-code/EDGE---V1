@@ -6,7 +6,7 @@ Authoritative programme gate: MDOS Master Programme Tracker → Phase 2.0 Fresh 
 
 ## Information Requirements
 
-Each issuance contains exactly five ordered stock horizons: D, D+1, D+2, D+3 and D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover the governed ATR/realised-volatility, liquidity, gap/event-risk and stock/sector-regime boundary. Missing evidence fails closed.
+Each issuance contains exactly five ordered stock horizons: D, D+1, D+2, D+3 and D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover the governed ATR/realised-volatility, liquidity, gap/event-risk and stock/sector-regime boundary. Missing evidence fails closed. Each governed calibration dimension must retain attributable lineage; gap/event-risk evidence may not silently inherit an unrelated price/regime reference.
 
 Before historical evidence may support calibration, each ticker+issuance group must also expose an immutable D:D+4 session-sequence proof: five ordered target sessions, one governed trading-calendar version shared by all five rows, and attributable calendar-source identity/hash. This prevents calendar-day offsets or inferred holidays from masquerading as exchange-session evidence.
 
@@ -37,5 +37,7 @@ G5 remains incomplete until genuine evidence-derived stock calibration is implem
 - Calibration-evidence-boundary head `a23409f` passed EDGE V1 CI #188.
 - 2C-02 integrity/timing head `1017033b` passed EDGE V1 CI #201 (run 36085103003).
 - `04250f74` + `b0ef9c10` — exchange-session proof validator and tests.
-- `cabac2c0` — aligned 2C-02 repository evidence contract; CI pending at time of this binding update.
+- `cabac2c0` — aligned 2C-02 repository evidence contract.
+- `95cc2fe5` — mandatory calibration evidence-reference value integrity; passed EDGE V1 CI #237 (run 36199407423).
+- `bbf2f6fc` + `40e6421d` — require independently attributable gap/event-risk calibration evidence and regression coverage; CI pending at time of this binding update.
 - Canonical Drive companion advanced additively to G5 / 2C-02 Evidence Readiness Alignment V1.2 on 25-Sep-2026; V1.1 and earlier history preserved.

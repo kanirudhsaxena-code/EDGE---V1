@@ -1,0 +1,140 @@
+name: Select 25 Sep LTF Exception Canonical
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/exception-canonical-ltf-20260925.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      EXPECTED_RUN_ID: EDGE-LTF-20260925-033422-AUTO
+      EXPECTED_BUNDLE_ID: EDGE-RESEARCH-LTF-20260925-090408IST
+      TARGET_DATE: '2026-09-25'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Select fresh user-authorized LTF run as canonical
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import psycopg
+
+          run_id=os.environ['EXPECTED_RUN_ID']
+          bundle_id=os.environ['EXPECTED_BUNDLE_ID']
+          target_date=os.environ['TARGET_DATE']
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          reason=(
+            'User-authorized EXCEPTION_CANONICAL for 2026-09-25. Fresh EDGE LTF execution '
+            f'{run_id} was requested at approximately 09:04 IST with governed research bundle {bundle_id}. '
+            'The normal pre-open selection window had already passed, so this explicit selection preserves '
+            'the actual run timestamps while making the fresh run the sole canonical recommendation included in master metrics for this key.'
+          )
+
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute('''
+                SELECT r.recommendation_id,r.ticker,r.forecast_horizon,r.run_timestamp,r.created_at,
+                       rp.reference_price,erb.research_fresh_at,rrb.bundle_id
+                  FROM recommendations r
+                  JOIN recommendation_performance rp USING(recommendation_id)
+                  JOIN recommendation_research_bundle rrb USING(recommendation_id)
+                  JOIN edge_research_bundles erb USING(bundle_id)
+                 WHERE r.recommendation_id=%s
+                 LIMIT 1
+              ''',(run_id,))
+              row=cur.fetchone()
+              if not row:
+                raise SystemExit('LTF_25SEP_RECOMMENDATION_NOT_FOUND')
+              rec_id,ticker,horizon,run_at,completed_at,reference_price,research_fresh_at,actual_bundle=row
+              if str(ticker).upper()!='LTF': raise SystemExit(f'TICKER_MISMATCH {ticker}')
+              if actual_bundle!=bundle_id: raise SystemExit(f'BUNDLE_MISMATCH got={actual_bundle} expected={bundle_id}')
+              if str(run_at)[:10]!=target_date: raise SystemExit(f'RUN_DATE_MISMATCH run_at={run_at} target={target_date}')
+              key=f'LTF|{target_date}|{str(horizon).upper()}'
+
+              cur.execute('''
+                INSERT INTO edge_recommendation_governance(
+                  recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,
+                  candidate_type,requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,
+                  research_fresh_at,fallback_reason
+                ) VALUES (%s,%s,'LTF',%s,%s,'EXCEPTION_CANONICAL',%s,%s,
+                          %s::date + time '08:55:59',%s::date + time '09:00:00',%s,%s)
+                ON CONFLICT (recommendation_id) DO UPDATE SET
+                  canonical_key=EXCLUDED.canonical_key,
+                  ticker=EXCLUDED.ticker,
+                  target_trading_date=EXCLUDED.target_trading_date,
+                  forecast_horizon=EXCLUDED.forecast_horizon,
+                  candidate_type='EXCEPTION_CANONICAL',
+                  research_fresh_at=EXCLUDED.research_fresh_at,
+                  fallback_reason=EXCLUDED.fallback_reason
+              ''',(rec_id,key,target_date,horizon,run_at,completed_at or run_at,target_date,target_date,research_fresh_at,reason))
+
+              cur.execute('''
+                INSERT INTO edge_canonical_selections(
+                  canonical_key,ticker,target_trading_date,forecast_horizon,
+                  selection_status,canonical_type,selected_recommendation_id,selected_at,selection_reason
+                ) VALUES (%s,'LTF',%s,%s,'SELECTED','EXCEPTION_CANONICAL',%s,%s,%s)
+                ON CONFLICT (canonical_key) DO UPDATE SET
+                  ticker=EXCLUDED.ticker,
+                  target_trading_date=EXCLUDED.target_trading_date,
+                  forecast_horizon=EXCLUDED.forecast_horizon,
+                  selection_status='SELECTED',
+                  canonical_type='EXCEPTION_CANONICAL',
+                  selected_recommendation_id=EXCLUDED.selected_recommendation_id,
+                  selected_at=EXCLUDED.selected_at,
+                  selection_reason=EXCLUDED.selection_reason
+              ''',(key,target_date,horizon,rec_id,now,reason))
+
+              cur.execute('''
+                UPDATE recommendation_lifecycle l
+                   SET include_in_master_metrics=false,updated_at=now()
+                 WHERE l.recommendation_id IN (
+                   SELECT g.recommendation_id FROM edge_recommendation_governance g
+                    WHERE g.ticker='LTF' AND g.target_trading_date=%s AND g.forecast_horizon=%s
+                 )
+              ''',(target_date,horizon))
+              cur.execute('''UPDATE recommendation_lifecycle SET include_in_master_metrics=true,updated_at=now() WHERE recommendation_id=%s''',(rec_id,))
+
+              cur.execute('''
+                SELECT s.selection_status,s.canonical_type,s.selected_recommendation_id,
+                       l.include_in_master_metrics,g.candidate_type,rp.reference_price,s.selected_at
+                  FROM edge_canonical_selections s
+                  JOIN recommendation_lifecycle l ON l.recommendation_id=s.selected_recommendation_id
+                  JOIN edge_recommendation_governance g ON g.recommendation_id=s.selected_recommendation_id
+                  JOIN recommendation_performance rp ON rp.recommendation_id=s.selected_recommendation_id
+                 WHERE s.canonical_key=%s
+              ''',(key,))
+              v=cur.fetchone()
+              if not v or v[0]!='SELECTED' or v[1]!='EXCEPTION_CANONICAL' or v[2]!=rec_id or v[3] is not True or v[4]!='EXCEPTION_CANONICAL':
+                raise SystemExit(f'LTF_25SEP_CANONICAL_VERIFY_FAILED {v}')
+              out={
+                'status':'LTF_25SEP_EXCEPTION_CANONICAL_CONFIRMED','target_trading_date':target_date,
+                'canonical_key':key,'recommendation_id':rec_id,'run_id':run_id,'research_bundle_id':bundle_id,
+                'reference_price':float(v[5]) if v[5] is not None else None,'canonical_type':v[1],
+                'selection_status':v[0],'include_in_master_metrics':v[3],'selected_at':v[6].isoformat() if hasattr(v[6],'isoformat') else str(v[6])
+              }
+              open('ltf-canonical-20260925.json','w').write(json.dumps(out,indent=2,sort_keys=True))
+              print(json.dumps(out,sort_keys=True))
+            conn.commit()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ltf-canonical-20260925
+          path: ltf-canonical-20260925.json
+          if-no-files-found: ignore
+          retention-days: 30

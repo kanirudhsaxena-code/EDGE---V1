@@ -97,6 +97,27 @@ def test_issuance_source_ref_requires_identity_time_and_hash():
         validate_edge_truth_baseline(payload)
 
 
+@pytest.mark.parametrize(
+    "source_systems",
+    [
+        [],
+        [{}],
+        [{"name": "fixture"}],
+        [{"version": "1"}],
+        ["fixture-v1"],
+    ],
+)
+def test_source_systems_require_attributable_identity_and_version_reference(source_systems):
+    payload = _baseline(); payload["source_systems"] = source_systems; _rehash(payload)
+    with pytest.raises(BaselineValidationError, match="source_systems"):
+        validate_edge_truth_baseline(payload)
+
+
+def test_source_system_reference_alias_is_accepted():
+    payload = _baseline(); payload["source_systems"] = [{"source": "fixture", "reference": "dataset-v1"}]; _rehash(payload)
+    validate_edge_truth_baseline(payload)
+
+
 def test_mutated_frozen_observation_invalidates_hash():
     payload = _baseline(); payload["observations"][0]["spot"] = 101.0
     with pytest.raises(BaselineValidationError, match="baseline_hash"):

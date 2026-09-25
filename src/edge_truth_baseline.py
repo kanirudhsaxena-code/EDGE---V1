@@ -6,7 +6,7 @@ values, or alter production recommendation semantics.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 import hashlib
 import json
@@ -17,7 +17,7 @@ TOP_LEVEL_REQUIRED = (
     "baseline_contract_version", "baseline_id", "baseline_hash", "generated_at",
     "source_systems", "observation_count", "distinct_ticker_count",
     "distinct_session_count", "coverage_by_ticker_horizon",
-    "missing_unverified_counts", "observations",
+    "missing_unverified_counts", "session_sequences", "observations",
 )
 OBSERVATION_REQUIRED = (
     "ticker", "instrument_id", "issuance_asof", "trading_calendar_version",
@@ -62,6 +62,39 @@ def compute_baseline_hash(payload: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _validate_session_sequences(payload: Mapping[str, Any], grouped: Mapping[str, Mapping[str, Any]]) -> None:
+    declared = payload["session_sequences"]
+    if not isinstance(declared, Mapping):
+        raise BaselineValidationError("session_sequences must be an object")
+    if set(declared) != set(grouped):
+        raise BaselineValidationError("session_sequences keys do not match ticker/issuance groups")
+
+    for key, horizon_rows in grouped.items():
+        if set(horizon_rows) != set(HORIZONS):
+            raise BaselineValidationError(f"{key} must contain exactly D:D+4 horizons")
+        proof = declared[key]
+        if not isinstance(proof, Mapping):
+            raise BaselineValidationError(f"session_sequences[{key}] must be an object")
+        required = ("trading_calendar_version", "calendar_source_ref", "sessions")
+        missing = _missing(proof, required)
+        if missing:
+            raise BaselineValidationError(f"session_sequences[{key}] missing fields: {', '.join(missing)}")
+        source_ref = proof["calendar_source_ref"]
+        if not isinstance(source_ref, Mapping) or not source_ref.get("source") or not source_ref.get("hash"):
+            raise BaselineValidationError(f"session_sequences[{key}].calendar_source_ref requires source and hash")
+        sessions = proof["sessions"]
+        if not isinstance(sessions, list) or len(sessions) != len(HORIZONS):
+            raise BaselineValidationError(f"session_sequences[{key}].sessions must contain five ordered sessions")
+        if len(set(sessions)) != len(HORIZONS) or sessions != sorted(sessions):
+            raise BaselineValidationError(f"session_sequences[{key}].sessions must be unique and increasing")
+        expected_sessions = [str(horizon_rows[h]["target_session"]) for h in HORIZONS]
+        if sessions != expected_sessions:
+            raise BaselineValidationError(f"session_sequences[{key}] does not match D:D+4 target_session rows")
+        versions = {str(horizon_rows[h]["trading_calendar_version"]) for h in HORIZONS}
+        if versions != {str(proof["trading_calendar_version"])}:
+            raise BaselineValidationError(f"session_sequences[{key}] calendar version mismatch")
+
+
 def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
     """Validate frozen evidence-contract structure/provenance; never infer or impute."""
     if not isinstance(payload, Mapping):
@@ -81,15 +114,14 @@ def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
     tickers: set[str] = set()
     sessions: set[str] = set()
     coverage: Counter[tuple[str, str]] = Counter()
+    grouped: dict[str, dict[str, Any]] = defaultdict(dict)
 
     for index, observation in enumerate(observations):
         if not isinstance(observation, Mapping):
             raise BaselineValidationError(f"observation[{index}] must be an object")
         missing = _missing(observation, OBSERVATION_REQUIRED)
         if missing:
-            raise BaselineValidationError(
-                f"observation[{index}] missing fields: {', '.join(missing)}"
-            )
+            raise BaselineValidationError(f"observation[{index}] missing fields: {', '.join(missing)}")
         prohibited = PROHIBITED_PRODUCTION_KEYS.intersection(observation)
         if prohibited:
             raise BaselineValidationError(
@@ -109,20 +141,22 @@ def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
             raise BaselineValidationError(f"observation[{index}] issuance_asof is after generated_at")
         for ref_index, source_ref in enumerate(observation["source_refs"]):
             if not isinstance(source_ref, Mapping) or not source_ref.get("hash") or not source_ref.get("asof"):
-                raise BaselineValidationError(
-                    f"observation[{index}].source_refs[{ref_index}] requires asof and hash"
-                )
-            source_asof = _parse_timestamp(
-                source_ref["asof"], f"observation[{index}].source_refs[{ref_index}].asof"
-            )
+                raise BaselineValidationError(f"observation[{index}].source_refs[{ref_index}] requires asof and hash")
+            source_asof = _parse_timestamp(source_ref["asof"], f"observation[{index}].source_refs[{ref_index}].asof")
             if source_asof > issuance:
-                raise BaselineValidationError(
-                    f"observation[{index}] source provenance is after issuance_asof"
-                )
+                raise BaselineValidationError(f"observation[{index}] source provenance is after issuance_asof")
 
-        tickers.add(str(observation["ticker"]))
-        sessions.add(str(observation["issuance_asof"]))
-        coverage[(str(observation["ticker"]), str(horizon))] += 1
+        ticker = str(observation["ticker"])
+        issuance_key = str(observation["issuance_asof"])
+        group_key = f"{ticker}|{issuance_key}"
+        if horizon in grouped[group_key]:
+            raise BaselineValidationError(f"duplicate horizon {horizon} for {group_key}")
+        grouped[group_key][str(horizon)] = observation
+        tickers.add(ticker)
+        sessions.add(issuance_key)
+        coverage[(ticker, str(horizon))] += 1
+
+    _validate_session_sequences(payload, grouped)
 
     if payload["distinct_ticker_count"] != len(tickers):
         raise BaselineValidationError("distinct_ticker_count does not match observations")

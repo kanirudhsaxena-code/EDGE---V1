@@ -12,14 +12,17 @@ from typing import Any, Mapping, Sequence
 from src.edge_truth_baseline import HORIZONS
 
 
+def _group_key(row: Mapping[str, Any]) -> str:
+    return f"{row.get('ticker', '')}|{row.get('issuance_asof', '')}"
+
+
 def audit_candidate_evidence(
     observations: Sequence[Mapping[str, Any]],
     session_sequences: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in observations:
-        key = f"{row.get('ticker', '')}|{row.get('issuance_asof', '')}"
-        groups[key].append(row)
+        groups[_group_key(row)].append(row)
 
     accepted: list[str] = []
     rejected: dict[str, dict[str, Any]] = {}
@@ -62,4 +65,27 @@ def audit_candidate_evidence(
         "rejected_groups": rejected,
         "rejected_group_count": len(rejected),
         "orphan_session_sequences": orphan_sequences,
+    }
+
+
+def extract_complete_evidence_subset(
+    observations: Sequence[Mapping[str, Any]],
+    session_sequences: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return only structurally complete groups plus their exact calendar proofs.
+
+    This is a loss-accounted filter, not evidence repair: rejected groups remain fully
+    described in ``audit`` and no observation value or session proof is synthesized.
+    The returned subset is suitable as bounded input to the governed baseline builder,
+    whose stricter provenance/content validator remains authoritative.
+    """
+    audit = audit_candidate_evidence(observations, session_sequences)
+    accepted = set(audit["accepted_complete_groups"])
+    rows = [dict(row) for row in observations if _group_key(row) in accepted]
+    rows.sort(key=lambda row: (_group_key(row), HORIZONS.index(str(row["horizon"]))))
+    proofs = {key: dict(session_sequences[key]) for key in sorted(accepted)}
+    return {
+        "observations": rows,
+        "session_sequences": proofs,
+        "audit": audit,
     }

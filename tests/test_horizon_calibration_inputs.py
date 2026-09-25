@@ -65,6 +65,27 @@ def test_invalid_numeric_evidence_fails_closed(field, value):
         validate_stock_horizon_calibration_evidence(evidence(**{field: value}))
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("spot", float("nan")),
+        ("atr14", float("inf")),
+        ("realized_volatility_pct", float("-inf")),
+        ("liquidity_ratio", float("nan")),
+        ("gap_risk_pct", float("inf")),
+        ("sector_relative_strength_pct", float("nan")),
+    ],
+)
+def test_non_finite_numeric_evidence_fails_closed(field, value):
+    with pytest.raises(ValueError, match="finite number"):
+        validate_stock_horizon_calibration_evidence(evidence(**{field: value}))
+
+
+def test_boolean_numeric_evidence_fails_closed():
+    with pytest.raises(ValueError, match="spot must be a finite number"):
+        validate_stock_horizon_calibration_evidence(evidence(spot=True))
+
+
 def test_unverified_event_risk_is_explicit_not_fabricated():
     payload = calibration_evidence_payload(evidence(event_risk="UNVERIFIED"))
     assert payload["event_risk"] == "UNVERIFIED"

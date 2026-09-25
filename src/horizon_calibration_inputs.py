@@ -63,7 +63,9 @@ def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEviden
         raise ValueError("stock_regime and sector_regime are required")
     if not isinstance(e.evidence_refs, Mapping):
         raise ValueError("evidence_refs must be a mapping")
-    required_refs = {"price_history", "volatility", "liquidity", "regime"}
+    # Every governed calibration dimension must remain independently attributable.
+    # In particular, gap/event risk may not silently inherit price/regime lineage.
+    required_refs = {"price_history", "volatility", "liquidity", "gap_event_risk", "regime"}
     invalid_refs = sorted(
         key
         for key in required_refs

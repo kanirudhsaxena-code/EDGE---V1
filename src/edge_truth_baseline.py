@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 import hashlib
 import json
+import math
 from typing import Any, Mapping, Sequence
 
 HORIZONS = ("D", "D+1", "D+2", "D+3", "D+4")
@@ -50,6 +51,28 @@ def _parse_timestamp(value: Any, label: str) -> datetime:
     if parsed.tzinfo is None:
         raise BaselineValidationError(f"{label} must include timezone")
     return parsed
+
+
+def _validate_target_ohlc(value: Any, label: str) -> None:
+    """Require attributable matured OHLC to be complete and geometrically possible."""
+    if not isinstance(value, Mapping):
+        raise BaselineValidationError(f"{label} must be an object")
+    required = ("open", "high", "low", "close")
+    missing = _missing(value, required)
+    if missing:
+        raise BaselineValidationError(f"{label} missing fields: {', '.join(missing)}")
+    numeric: dict[str, float] = {}
+    for field in required:
+        raw = value[field]
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(float(raw)):
+            raise BaselineValidationError(f"{label}.{field} must be a finite number")
+        numeric[field] = float(raw)
+    if numeric["low"] > numeric["high"]:
+        raise BaselineValidationError(f"{label} low cannot exceed high")
+    if not numeric["low"] <= numeric["open"] <= numeric["high"]:
+        raise BaselineValidationError(f"{label} open must lie within low/high")
+    if not numeric["low"] <= numeric["close"] <= numeric["high"]:
+        raise BaselineValidationError(f"{label} close must lie within low/high")
 
 
 def compute_baseline_hash(payload: Mapping[str, Any]) -> str:
@@ -133,8 +156,10 @@ def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
             raise BaselineValidationError(f"observation[{index}] invalid horizon: {horizon}")
         if not observation["source_refs"]:
             raise BaselineValidationError(f"observation[{index}] requires source_refs")
-        if not observation["outcome_source_ref"]:
-            raise BaselineValidationError(f"observation[{index}] requires outcome_source_ref")
+        outcome_ref = observation["outcome_source_ref"]
+        if not isinstance(outcome_ref, Mapping) or not outcome_ref.get("source") or not outcome_ref.get("hash"):
+            raise BaselineValidationError(f"observation[{index}].outcome_source_ref requires source and hash")
+        _validate_target_ohlc(observation["target_ohlc"], f"observation[{index}].target_ohlc")
 
         issuance = _parse_timestamp(observation["issuance_asof"], f"observation[{index}].issuance_asof")
         if issuance > generated_at:

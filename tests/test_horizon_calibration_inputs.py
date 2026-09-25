@@ -23,6 +23,7 @@ def evidence(**overrides):
             "price_history": "run:stock-daily",
             "volatility": "derived:atr14-rv",
             "liquidity": "derived:volume-ratio",
+            "gap_event_risk": "run:stock-gap-event-context",
             "regime": "run:stock-sector-context",
         },
     )
@@ -35,6 +36,7 @@ def test_valid_stock_specific_calibration_evidence_is_shadow_only():
     assert payload["mode"] == "SHADOW"
     assert payload["atr14"] == 7.25
     assert payload["stock_regime"] == "TREND"
+    assert payload["evidence_refs"]["gap_event_risk"] == "run:stock-gap-event-context"
     assert "probabilities" not in payload
     assert "zone" not in payload
 
@@ -45,6 +47,19 @@ def test_missing_lineage_reference_fails_closed():
             evidence(evidence_refs={
                 "price_history": "p",
                 "volatility": "v",
+                "gap_event_risk": "g",
+                "regime": "r",
+            })
+        )
+
+
+def test_missing_gap_event_risk_lineage_fails_closed():
+    with pytest.raises(ValueError, match="missing or invalid calibration evidence refs: gap_event_risk"):
+        validate_stock_horizon_calibration_evidence(
+            evidence(evidence_refs={
+                "price_history": "p",
+                "volatility": "v",
+                "liquidity": "l",
                 "regime": "r",
             })
         )
@@ -62,6 +77,7 @@ def test_non_string_required_evidence_reference_values_fail_closed(bad_value):
         "price_history": "p",
         "volatility": "v",
         "liquidity": "l",
+        "gap_event_risk": "g",
         "regime": "r",
     }
     refs["volatility"] = bad_value

@@ -26,6 +26,7 @@ No unavailable issuance-time field may be backfilled from later knowledge and re
 6. Sparse evidence remains sparse: no horizon interpolation, NIFTY parameter copying, arbitrary probability decay or manufactured width multipliers.
 7. Event/gap/liquidity/regime fields may be UNKNOWN/UNVERIFIED and must not be silently imputed.
 8. The immutable artifact hash is deterministic SHA-256 of canonical UTF-8 JSON for the complete top-level artifact excluding only `baseline_hash`, using lexicographically sorted object keys, compact separators, Unicode preserved and non-finite numbers rejected. Stored form is `sha256:<lowercase hex>`.
+9. Population tooling may derive only artifact metadata (counts, coverage, explicit missing/unverified counts, deterministic ordering/hash) from supplied attributable rows. It must copy evidence values and calendar proofs without fetching, reconstructing, imputing or calibrating them.
 
 ## Output Contract
 
@@ -41,6 +42,7 @@ A consumer fails closed when the artifact is missing, empty, hash-invalid, timin
 - Outcomes may be obtained after maturity, but issuance-time state must never use look-ahead information.
 - Baseline freezing precedes any claim that empirical calibration exists.
 - Calendar proof is provenance, not a new forecasting parameter or methodology.
+- Population tooling is not a market-data source and cannot convert unattributable rows into accepted evidence.
 
 ## Acceptance
 
@@ -56,4 +58,6 @@ Approved authority: MDOS Master Programme Tracker → Phase 2.0 Fresh Plan, 2C-0
 
 2026-09-25 integrity/timing increment: commits `2ab837f5` + `07d8c602` add deterministic baseline SHA-256 verification, timezone-aware generated/issuance/source timestamps, fail-closed rejection of issuance-time source evidence timestamped after issuance, and regression tests proving mutation invalidates the frozen hash and future provenance is rejected. Aligned contract head `c9249f51` passed EDGE V1 CI #200 (run 36084965592); documentation evidence head `1017033b` passed CI #201 (run 36085103003).
 
-2026-09-25 exchange-session proof increment: commits `04250f74` + `b0ef9c10` require complete ticker+issuance D:D+4 groups, unique/increasing target sessions, exact `session_sequences` row equality, a single governed calendar version and immutable calendar-source attribution. This closes the validator-side exchange-session proof gap only; it does not populate historical evidence or assert calendar correctness without a source. The governed PR #72 head `b230a81e1685be5f50f18e7a6c912c16e2d2be25` passed EDGE V1 CI #207 (workflow run `36092895697`). 2C-02 remains NOT DONE because a populated attributable baseline and empirical stock/horizon calibration are still outstanding.
+2026-09-25 exchange-session proof increment: commits `04250f74` + `b0ef9c10` require complete ticker+issuance D:D+4 groups, unique/increasing target sessions, exact `session_sequences` row equality, a single governed calendar version and immutable calendar-source attribution. This closes the validator-side exchange-session proof gap only; it does not populate historical evidence or assert calendar correctness without a source. The governed PR #72 head `b230a81e1685be5f50f18e7a6c912c16e2d2be25` passed EDGE V1 CI #207 (workflow run `36092895697`). Documentation/evidence reconciliation head `30d5808b` passed EDGE V1 CI #211 (workflow run `36100795470`).
+
+2026-09-25 population-tooling increment: `src/edge_truth_baseline_builder.py` plus `tests/test_edge_truth_baseline_builder.py` now provide a deterministic bounded path from already-attributable evidence rows/calendar proofs to the frozen contract artifact, deriving only counts/coverage/missingness/order/hash and immediately re-validating the result. Implementation commits `5c870c7b`, `180cf65b`, `0dc9256b`; CI on the resulting governed head is pending. This is substantive baseline-population tooling but not populated market evidence. 2C-02 remains NOT DONE until attributable historical rows are supplied/frozen; empirical calibration remains outstanding.

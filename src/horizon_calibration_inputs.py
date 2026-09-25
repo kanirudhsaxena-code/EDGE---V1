@@ -64,9 +64,13 @@ def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEviden
     if not isinstance(e.evidence_refs, Mapping):
         raise ValueError("evidence_refs must be a mapping")
     required_refs = {"price_history", "volatility", "liquidity", "regime"}
-    missing = sorted(k for k in required_refs if not str(e.evidence_refs.get(k, "")).strip())
-    if missing:
-        raise ValueError(f"missing calibration evidence refs: {','.join(missing)}")
+    invalid_refs = sorted(
+        key
+        for key in required_refs
+        if not isinstance(e.evidence_refs.get(key), str) or not e.evidence_refs.get(key, "").strip()
+    )
+    if invalid_refs:
+        raise ValueError(f"missing or invalid calibration evidence refs: {','.join(invalid_refs)}")
 
 
 def calibration_evidence_payload(e: StockHorizonCalibrationEvidence) -> dict:

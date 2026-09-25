@@ -6,6 +6,7 @@ calendar proofs; it never fetches, imputes, calibrates, or changes production se
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
@@ -33,7 +34,9 @@ def build_edge_truth_baseline(
     """Freeze supplied attributable evidence into the governed deterministic artifact.
 
     The builder deliberately derives metadata only. Observation values and session proofs
-    are copied exactly; missing evidence is never reconstructed or inferred.
+    are copied exactly; missing evidence is never reconstructed or inferred. All supplied
+    evidence is deep-copied before hashing so later mutation of caller-owned nested
+    provenance cannot mutate the frozen artifact or invalidate its recorded hash.
     """
     if not baseline_id or not isinstance(baseline_id, str):
         raise ValueError("baseline_id is required")
@@ -42,7 +45,7 @@ def build_edge_truth_baseline(
     if not source_systems:
         raise ValueError("source_systems must be non-empty")
 
-    rows = [dict(row) for row in observations]
+    rows = [deepcopy(dict(row)) for row in observations]
     # Stable order makes independent freezes byte/hash reproducible without altering values.
     rows.sort(key=lambda row: (str(row.get("ticker", "")), str(row.get("issuance_asof", "")), HORIZONS.index(str(row.get("horizon"))) if row.get("horizon") in HORIZONS else 99))
     tickers = {str(row.get("ticker")) for row in rows}
@@ -57,7 +60,7 @@ def build_edge_truth_baseline(
         "baseline_id": baseline_id,
         "baseline_hash": "",
         "generated_at": generated_at,
-        "source_systems": [dict(source) for source in source_systems],
+        "source_systems": [deepcopy(dict(source)) for source in source_systems],
         "observation_count": len(rows),
         "distinct_ticker_count": len(tickers),
         "distinct_session_count": len(issuance_sessions),
@@ -66,7 +69,7 @@ def build_edge_truth_baseline(
             for (ticker, horizon), count in sorted(coverage.items())
         },
         "missing_unverified_counts": _count_missing_unverified(rows),
-        "session_sequences": {key: dict(value) for key, value in sorted(session_sequences.items())},
+        "session_sequences": {key: deepcopy(dict(value)) for key, value in sorted(session_sequences.items())},
         "observations": rows,
     }
     payload["baseline_hash"] = compute_baseline_hash(payload)

@@ -110,7 +110,9 @@ def test_naive_provenance_timestamp_fails_closed():
 
 
 def test_calendar_sequence_must_match_horizon_rows():
-    payload = _baseline(); payload["session_sequences"][next(iter(payload["session_sequences"]))]["sessions"][2] = "2026-09-08"; _rehash(payload)
+    payload = _baseline(); payload["session_sequences"][next(iter(payload["session_sequences"]))]["sessions"][4] = "2026-09-06"; _rehash(payload)
+    # Keep the proof ordered and unique so this fixture isolates row-to-sequence equality
+    # rather than being rejected earlier by the independent ordering invariant.
     with pytest.raises(BaselineValidationError, match="does not match"):
         validate_edge_truth_baseline(payload)
 

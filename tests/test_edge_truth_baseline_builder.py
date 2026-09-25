@@ -69,7 +69,7 @@ def test_builder_does_not_impute_missing_evidence():
 
 
 def test_builder_fails_closed_on_incomplete_horizon_group():
-    with pytest.raises(Exception, match="exactly D:D\+4"):
+    with pytest.raises(Exception, match="exactly D:D\\+4"):
         _build(_rows()[:-1])
 
 
@@ -77,3 +77,29 @@ def test_builder_preserves_unverified_evidence_explicitly():
     artifact = _build()
     assert all(row["event_risk"] == "UNVERIFIED" for row in artifact["observations"])
     assert artifact["missing_unverified_counts"]["event_risk"] == 5
+
+
+def test_builder_deep_freezes_nested_input_evidence_after_hashing():
+    rows = _rows()
+    sequences = _sequences()
+    source_systems = [{"name": "fixture", "version": "1", "provenance": {"hash": "source-hash"}}]
+    artifact = build_edge_truth_baseline(
+        baseline_id="immutable-fixture", observations=rows,
+        session_sequences=sequences, source_systems=source_systems,
+        generated_at="2026-09-10T00:00:00Z",
+    )
+    frozen_hash = artifact["baseline_hash"]
+
+    rows[0]["source_refs"][0]["hash"] = "mutated"
+    rows[0]["target_ohlc"]["close"] = 999.0
+    sequences[f"TEST|{ISSUANCE}"]["calendar_source_ref"]["hash"] = "mutated-calendar"
+    sequences[f"TEST|{ISSUANCE}"]["sessions"][0] = "2099-01-01"
+    source_systems[0]["provenance"]["hash"] = "mutated-source"
+
+    assert artifact["observations"][0]["source_refs"][0]["hash"] == "abc"
+    assert artifact["observations"][0]["target_ohlc"]["close"] == 101.0
+    assert artifact["session_sequences"][f"TEST|{ISSUANCE}"]["calendar_source_ref"]["hash"] == "calendar-sha256"
+    assert artifact["session_sequences"][f"TEST|{ISSUANCE}"]["sessions"][0] == SESSIONS[0]
+    assert artifact["source_systems"][0]["provenance"]["hash"] == "source-hash"
+    assert artifact["baseline_hash"] == frozen_hash
+    validate_edge_truth_baseline(artifact)

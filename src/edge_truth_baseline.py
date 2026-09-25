@@ -1,0 +1,120 @@
+"""Fail-closed structural validator for the 2C-02 EDGE truth baseline.
+
+Research/read-only tooling only. This module does not calibrate forecasts, infer missing
+values, or alter production recommendation semantics.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any, Mapping, Sequence
+
+HORIZONS = ("D", "D+1", "D+2", "D+3", "D+4")
+TOP_LEVEL_REQUIRED = (
+    "baseline_contract_version",
+    "baseline_id",
+    "baseline_hash",
+    "generated_at",
+    "source_systems",
+    "observation_count",
+    "distinct_ticker_count",
+    "distinct_session_count",
+    "coverage_by_ticker_horizon",
+    "missing_unverified_counts",
+    "observations",
+)
+OBSERVATION_REQUIRED = (
+    "ticker",
+    "instrument_id",
+    "issuance_asof",
+    "trading_calendar_version",
+    "horizon",
+    "target_session",
+    "spot",
+    "atr14",
+    "atr14_source_window",
+    "realised_volatility",
+    "realised_volatility_window",
+    "liquidity_ratio",
+    "gap_risk",
+    "event_risk",
+    "stock_regime",
+    "sector_regime",
+    "source_refs",
+    "target_ohlc",
+    "outcome_source_ref",
+)
+PROHIBITED_PRODUCTION_KEYS = {
+    "recommendation",
+    "trade_action",
+    "market_trust",
+    "canonical_selection",
+    "probability_decay",
+    "zone_width_multiplier",
+    "expected_centre_formula",
+}
+
+
+class BaselineValidationError(ValueError):
+    """Raised when a baseline cannot safely be used as G5 calibration evidence."""
+
+
+def _missing(mapping: Mapping[str, Any], required: Sequence[str]) -> list[str]:
+    return [key for key in required if key not in mapping]
+
+
+def validate_edge_truth_baseline(payload: Mapping[str, Any]) -> None:
+    """Validate only frozen evidence-contract structure; never infer or impute data."""
+    if not isinstance(payload, Mapping):
+        raise BaselineValidationError("baseline must be an object")
+
+    missing = _missing(payload, TOP_LEVEL_REQUIRED)
+    if missing:
+        raise BaselineValidationError(f"missing top-level fields: {', '.join(missing)}")
+
+    observations = payload["observations"]
+    if not isinstance(observations, list) or not observations:
+        raise BaselineValidationError("observations must be a non-empty list")
+    if payload["observation_count"] != len(observations):
+        raise BaselineValidationError("observation_count does not match observations")
+
+    tickers: set[str] = set()
+    sessions: set[str] = set()
+    coverage: Counter[tuple[str, str]] = Counter()
+
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, Mapping):
+            raise BaselineValidationError(f"observation[{index}] must be an object")
+        missing = _missing(observation, OBSERVATION_REQUIRED)
+        if missing:
+            raise BaselineValidationError(
+                f"observation[{index}] missing fields: {', '.join(missing)}"
+            )
+        prohibited = PROHIBITED_PRODUCTION_KEYS.intersection(observation)
+        if prohibited:
+            raise BaselineValidationError(
+                f"observation[{index}] contains prohibited production/calibration fields: "
+                + ", ".join(sorted(prohibited))
+            )
+        horizon = observation["horizon"]
+        if horizon not in HORIZONS:
+            raise BaselineValidationError(f"observation[{index}] invalid horizon: {horizon}")
+        if not observation["source_refs"]:
+            raise BaselineValidationError(f"observation[{index}] requires source_refs")
+        if not observation["outcome_source_ref"]:
+            raise BaselineValidationError(f"observation[{index}] requires outcome_source_ref")
+        tickers.add(str(observation["ticker"]))
+        sessions.add(str(observation["issuance_asof"]))
+        coverage[(str(observation["ticker"]), str(horizon))] += 1
+
+    if payload["distinct_ticker_count"] != len(tickers):
+        raise BaselineValidationError("distinct_ticker_count does not match observations")
+    if payload["distinct_session_count"] != len(sessions):
+        raise BaselineValidationError("distinct_session_count does not match observations")
+
+    declared = payload["coverage_by_ticker_horizon"]
+    if not isinstance(declared, Mapping):
+        raise BaselineValidationError("coverage_by_ticker_horizon must be an object")
+    expected = {f"{ticker}|{horizon}": count for (ticker, horizon), count in coverage.items()}
+    if dict(declared) != expected:
+        raise BaselineValidationError("coverage_by_ticker_horizon does not match observations")

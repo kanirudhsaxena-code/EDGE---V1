@@ -184,4 +184,3 @@ class ForecastPathPersistenceAdapter:
             raise
         finally:
             cur.close()
-            conn.close()

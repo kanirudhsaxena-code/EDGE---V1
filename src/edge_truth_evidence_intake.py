@@ -25,6 +25,10 @@ def _validate_intake_containers(
     for index, row in enumerate(observations):
         if not isinstance(row, Mapping):
             raise ValueError(f"observation {index} must be a mapping")
+        for field in ("ticker", "issuance_asof", "horizon", "target_session"):
+            value = row.get(field)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"observation {index} {field} must be a string when supplied")
     for key, proof in session_sequences.items():
         if not isinstance(key, str) or not key.strip():
             raise ValueError("session sequence keys must be non-blank strings")

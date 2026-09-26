@@ -5,9 +5,9 @@ recommendation, canonical selection, deployment, or production operation.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping, Sequence
 
 
 class FailureClass(str, Enum):
@@ -32,9 +32,12 @@ def _required_bool(record: Mapping[str, object], key: str) -> bool:
 
 
 def classify_record(record: Mapping[str, object]) -> AuditRecord:
+    if not isinstance(record, Mapping):
+        raise ValueError("historical record must be a mapping")
     assessment_id = record.get("assessment_id")
     if not isinstance(assessment_id, str) or not assessment_id.strip():
         raise ValueError("assessment_id must be a non-blank string")
+    assessment_id = assessment_id.strip()
     orchestration_ok = _required_bool(record, "orchestration_ok")
     source_available = _required_bool(record, "source_available")
     required_data_complete = _required_bool(record, "required_data_complete")
@@ -51,6 +54,8 @@ def classify_record(record: Mapping[str, object]) -> AuditRecord:
 
 
 def classify_sample(records: Sequence[Mapping[str, object]]) -> tuple[AuditRecord, ...]:
+    if isinstance(records, (str, bytes)) or not isinstance(records, Sequence):
+        raise ValueError("historical sample must be a sequence of mappings")
     if not records:
         raise ValueError("historical sample must be non-empty")
     seen: set[str] = set()

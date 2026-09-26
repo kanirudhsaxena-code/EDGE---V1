@@ -1,8 +1,8 @@
 from datetime import date, datetime, timezone
+import json
 
 from src.forecast_path import ForecastPathRow, ForecastPathWrite, forecast_path_hash
 from src.forecast_path_read import ForecastPathReadAdapter
-from tests.test_forecast_path_read import Conn
 
 
 def no_trade_fixture():
@@ -22,6 +22,28 @@ def no_trade_fixture():
         datetime(2026,9,18,4,0,tzinfo=timezone.utc),
         tuple(rows),
     )
+
+
+class Cursor:
+    def __init__(self,path): self.path=path
+    def execute(self,sql,params): pass
+    def fetchone(self):
+        p=self.path
+        return (p.version,p.source_run_id,p.issued_at,forecast_path_hash(p))
+    def fetchall(self):
+        return [
+            (i,r.horizon_label,r.target_trading_date,r.direction,r.bull_probability,r.base_probability,
+             r.bear_probability,r.expected_centre,r.outer_expected_zone_low,r.outer_expected_zone_high,
+             r.evidence_basis,r.regime_context,r.verification_state,json.dumps(dict(r.lineage)))
+            for i,r in enumerate(self.path.rows)
+        ]
+    def close(self): pass
+
+
+class Conn:
+    def __init__(self,path): self.cur=Cursor(path)
+    def cursor(self): return self.cur
+    def close(self): pass
 
 
 def test_no_trade_path_recovers_all_five_rows_with_identity_and_lineage():

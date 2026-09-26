@@ -107,6 +107,15 @@ def test_rejects_non_mapping_observation_rows(bad_row):
         audit_candidate_evidence([bad_row], {})
 
 
+@pytest.mark.parametrize("field", ["ticker", "issuance_asof", "horizon", "target_session"])
+@pytest.mark.parametrize("bad_value", [7, True, [], {}])
+def test_rejects_non_string_identity_and_session_fields(field, bad_value):
+    row = _rows()[0]
+    row[field] = bad_value
+    with pytest.raises(ValueError, match=rf"observation 0 {field} must be a string when supplied"):
+        audit_candidate_evidence([row], {})
+
+
 @pytest.mark.parametrize("session_sequences", [None, "proofs", [], 7, True])
 def test_rejects_malformed_session_sequence_containers(session_sequences):
     with pytest.raises(ValueError, match="session_sequences must be a mapping"):

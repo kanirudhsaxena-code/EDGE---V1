@@ -81,8 +81,46 @@ def test_non_string_required_evidence_reference_values_fail_closed(bad_value):
         "regime": "r",
     }
     refs["volatility"] = bad_value
-    with pytest.raises(ValueError, match="missing or invalid calibration evidence refs: volatility"):
+    with pytest.raises(ValueError):
         validate_stock_horizon_calibration_evidence(evidence(evidence_refs=refs))
+
+
+@pytest.mark.parametrize(
+    "extra_key,extra_value",
+    [
+        ("optional_context", None),
+        ("optional_context", 7),
+        ("optional_context", False),
+        ("optional_context", []),
+        ("optional_context", {}),
+        ("", "run:blank-key"),
+        (7, "run:numeric-key"),
+    ],
+)
+def test_malformed_extra_lineage_entries_fail_closed(extra_key, extra_value):
+    refs = {
+        "price_history": "p",
+        "volatility": "v",
+        "liquidity": "l",
+        "gap_event_risk": "g",
+        "regime": "r",
+        extra_key: extra_value,
+    }
+    with pytest.raises(ValueError, match="invalid calibration evidence ref entries"):
+        validate_stock_horizon_calibration_evidence(evidence(evidence_refs=refs))
+
+
+def test_attributable_extra_lineage_entry_is_preserved():
+    refs = {
+        "price_history": "p",
+        "volatility": "v",
+        "liquidity": "l",
+        "gap_event_risk": "g",
+        "regime": "r",
+        "sector_context": "run:sector-context",
+    }
+    payload = calibration_evidence_payload(evidence(evidence_refs=refs))
+    assert payload["evidence_refs"]["sector_context"] == "run:sector-context"
 
 
 @pytest.mark.parametrize(

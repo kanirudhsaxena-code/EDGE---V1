@@ -74,6 +74,19 @@ def validate_forecast_path(path: ForecastPathWrite) -> None:
             raise ValueError(f"{row.horizon_label} issuance lineage is required")
 
 
+def _canonical_number(value: Any) -> Optional[float]:
+    """Normalize numeric fields before hashing so DB round-trips are stable.
+
+    Persistence backends commonly return numeric columns as float/Decimal even
+    when the producer supplied an integer literal. Hash identity must represent
+    the governed numeric value, not the Python/driver representation (30 vs
+    30.0, Decimal('30'), etc.).
+    """
+    if value is None:
+        return None
+    return float(value)
+
+
 def _payload(path: ForecastPathWrite) -> dict[str, Any]:
     return {
         "version": path.version,
@@ -86,12 +99,15 @@ def _payload(path: ForecastPathWrite) -> dict[str, Any]:
                 "target_trading_date": row.target_trading_date.isoformat(),
                 "direction": row.direction,
                 "probabilities": {
-                    "bull": row.bull_probability,
-                    "base": row.base_probability,
-                    "bear": row.bear_probability,
+                    "bull": _canonical_number(row.bull_probability),
+                    "base": _canonical_number(row.base_probability),
+                    "bear": _canonical_number(row.bear_probability),
                 },
-                "expected_centre": row.expected_centre,
-                "outer_expected_zone": [row.outer_expected_zone_low, row.outer_expected_zone_high],
+                "expected_centre": _canonical_number(row.expected_centre),
+                "outer_expected_zone": [
+                    _canonical_number(row.outer_expected_zone_low),
+                    _canonical_number(row.outer_expected_zone_high),
+                ],
                 "evidence_basis": row.evidence_basis,
                 "regime_context": row.regime_context,
                 "verification_state": row.verification_state,
@@ -168,3 +184,4 @@ class ForecastPathPersistenceAdapter:
             raise
         finally:
             cur.close()
+            conn.close()

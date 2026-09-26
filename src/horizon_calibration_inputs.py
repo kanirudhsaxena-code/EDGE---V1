@@ -63,6 +63,19 @@ def validate_stock_horizon_calibration_evidence(e: StockHorizonCalibrationEviden
         raise ValueError("stock_regime and sector_regime are required")
     if not isinstance(e.evidence_refs, Mapping):
         raise ValueError("evidence_refs must be a mapping")
+    # The complete lineage payload is persisted/audited downstream. Reject malformed
+    # extra entries as well as malformed mandatory entries so attribution cannot
+    # become partially non-serializable or ambiguous outside this boundary.
+    malformed_entries = sorted(
+        str(key)
+        for key, value in e.evidence_refs.items()
+        if not isinstance(key, str)
+        or not key.strip()
+        or not isinstance(value, str)
+        or not value.strip()
+    )
+    if malformed_entries:
+        raise ValueError(f"invalid calibration evidence ref entries: {','.join(malformed_entries)}")
     # Every governed calibration dimension must remain independently attributable.
     # In particular, gap/event risk may not silently inherit price/regime lineage.
     required_refs = {"price_history", "volatility", "liquidity", "gap_event_risk", "regime"}

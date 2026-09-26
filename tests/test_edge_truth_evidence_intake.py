@@ -1,3 +1,5 @@
+import pytest
+
 from src.edge_truth_evidence_intake import audit_candidate_evidence, extract_complete_evidence_subset
 
 HORIZONS = ("D", "D+1", "D+2", "D+3", "D+4")
@@ -91,3 +93,30 @@ def test_subset_does_not_mutate_supplied_observations_or_proofs():
 
     assert rows[0]["target_session"] == SESSIONS[0]
     assert sequences[f"GOOD|{ISSUANCE}"]["sessions"] == list(SESSIONS)
+
+
+@pytest.mark.parametrize("observations", [None, "rows", b"rows", 7, {"row": "value"}])
+def test_rejects_malformed_observation_containers(observations):
+    with pytest.raises(ValueError, match="observations must be a sequence of mappings"):
+        audit_candidate_evidence(observations, {})
+
+
+@pytest.mark.parametrize("bad_row", [None, "row", 7, True, ["row"]])
+def test_rejects_non_mapping_observation_rows(bad_row):
+    with pytest.raises(ValueError, match="observation 0 must be a mapping"):
+        audit_candidate_evidence([bad_row], {})
+
+
+@pytest.mark.parametrize("session_sequences", [None, "proofs", [], 7, True])
+def test_rejects_malformed_session_sequence_containers(session_sequences):
+    with pytest.raises(ValueError, match="session_sequences must be a mapping"):
+        audit_candidate_evidence([], session_sequences)
+
+
+def test_rejects_malformed_session_sequence_entries():
+    with pytest.raises(ValueError, match="keys must be non-blank strings"):
+        audit_candidate_evidence([], {"": {"sessions": []}})
+    with pytest.raises(ValueError, match="keys must be non-blank strings"):
+        audit_candidate_evidence([], {7: {"sessions": []}})
+    with pytest.raises(ValueError, match="must be a mapping"):
+        audit_candidate_evidence([], {"TEST|2026-09-01": None})

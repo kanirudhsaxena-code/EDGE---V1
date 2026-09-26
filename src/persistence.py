@@ -16,6 +16,7 @@ import json
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 from src.canonical_governance import register_recommendation_governance_values
+from src.forecast_path import ForecastPathWrite, persist_forecast_path_with_cursor, validate_forecast_path
 
 
 @dataclass(frozen=True)
@@ -150,13 +151,9 @@ def _canonical_hash(bundle: CanonicalRecommendationWrite) -> str:
         "ticker": bundle.ticker,
         "run_timestamp": bundle.run_timestamp.isoformat(),
         "forecast_horizon": bundle.forecast_horizon,
-        "probabilities": [
-            bundle.bull_probability,
-            bundle.base_probability,
-            bundle.bear_probability,
-        ],
+        "probabilities": [bundle.bull_probability,bundle.base_probability,bundle.bear_probability],
         "definitive_forecast": bundle.definitive_forecast,
-        "zone": [bundle.expected_price_zone_low, bundle.expected_price_zone_high],
+        "zone": [bundle.expected_price_zone_low,bundle.expected_price_zone_high],
         "des": bundle.des,
         "market_trust_score": bundle.market_trust_score,
         "bot_score": bundle.bot_score,
@@ -164,373 +161,79 @@ def _canonical_hash(bundle: CanonicalRecommendationWrite) -> str:
         "evidence_source_refs": sorted(bundle.evidence_source_refs),
         "research_bundle_id": bundle.research_bundle_id,
     }
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    raw = json.dumps(payload,sort_keys=True,separators=(",",":"),default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _validate_bundle(bundle: CanonicalRecommendationWrite) -> None:
-    if not bundle.recommendation_id.strip():
-        raise ValueError("recommendation_id is required")
-    if not bundle.ticker.strip():
-        raise ValueError("ticker is required")
-    if bundle.model_version != "EDGE_V1":
-        raise ValueError("model_version must be EDGE_V1")
-    if bundle.command_type != "EDGE":
-        raise ValueError("new autonomous recommendation command_type must be EDGE")
-    if not 1 <= bundle.horizon_days <= 5:
-        raise ValueError("horizon_days must be 1-5")
-    if len(bundle.checkpoint_dates) != 5:
-        raise ValueError("exactly five D+1...D+5 checkpoint dates are required")
-    if tuple(sorted(bundle.checkpoint_dates)) != bundle.checkpoint_dates:
-        raise ValueError("checkpoint dates must be increasing")
-    if bundle.checkpoint_dates[-1] != bundle.expiry_trading_date:
-        raise ValueError("D+5 checkpoint must equal expiry_trading_date")
-    if abs(
-        bundle.bull_probability + bundle.base_probability + bundle.bear_probability - 100.0
-    ) > 0.01:
-        raise ValueError("probabilities must sum to 100")
-    if bundle.expected_price_zone_low is not None and bundle.expected_price_zone_high is not None:
-        if bundle.expected_price_zone_low > bundle.expected_price_zone_high:
-            raise ValueError("expected price zone low cannot exceed high")
-    if bundle.reference_price <= 0:
-        raise ValueError("reference_price must be > 0")
-    refs = [r.strip() for r in bundle.evidence_source_refs if r.strip()]
-    if not refs:
-        raise ValueError("at least one evidence_source_ref is required")
-    if len(set(refs)) != len(refs):
-        raise ValueError("evidence_source_refs must be unique")
-    if not bundle.component_scores:
-        raise ValueError("component_scores are required")
+    if not bundle.recommendation_id.strip(): raise ValueError("recommendation_id is required")
+    if not bundle.ticker.strip(): raise ValueError("ticker is required")
+    if bundle.model_version != "EDGE_V1": raise ValueError("model_version must be EDGE_V1")
+    if bundle.command_type != "EDGE": raise ValueError("new autonomous recommendation command_type must be EDGE")
+    if not 1 <= bundle.horizon_days <= 5: raise ValueError("horizon_days must be 1-5")
+    if len(bundle.checkpoint_dates) != 5: raise ValueError("exactly five D+1...D+5 checkpoint dates are required")
+    if tuple(sorted(bundle.checkpoint_dates)) != bundle.checkpoint_dates: raise ValueError("checkpoint dates must be increasing")
+    if bundle.checkpoint_dates[-1] != bundle.expiry_trading_date: raise ValueError("D+5 checkpoint must equal expiry_trading_date")
+    if abs(bundle.bull_probability + bundle.base_probability + bundle.bear_probability - 100.0) > 0.01: raise ValueError("probabilities must sum to 100")
+    if bundle.expected_price_zone_low is not None and bundle.expected_price_zone_high is not None and bundle.expected_price_zone_low > bundle.expected_price_zone_high: raise ValueError("expected price zone low cannot exceed high")
+    if bundle.reference_price <= 0: raise ValueError("reference_price must be > 0")
+    refs=[r.strip() for r in bundle.evidence_source_refs if r.strip()]
+    if not refs: raise ValueError("at least one evidence_source_ref is required")
+    if len(set(refs)) != len(refs): raise ValueError("evidence_source_refs must be unique")
+    if not bundle.component_scores: raise ValueError("component_scores are required")
 
 
 class AtomicNeonPersistenceAdapter:
-    """Persist one governed EDGE recommendation atomically.
+    """Persist one governed EDGE recommendation and optional G5 SHADOW path atomically."""
 
-    connection_factory must return a DB-API connection supporting cursor(),
-    commit(), and rollback(). The cursor must support execute() and fetchone().
-    """
+    def __init__(self, connection_factory: Callable[[], Any], evidence_records: Sequence[CanonicalEvidenceWrite] = (), forecast_path: Optional[ForecastPathWrite] = None):
+        self._connection_factory=connection_factory
+        self._evidence_records=tuple(evidence_records)
+        self._forecast_path=forecast_path
 
-    def __init__(
-        self,
-        connection_factory: Callable[[], Any],
-        evidence_records: Sequence[CanonicalEvidenceWrite] = (),
-    ):
-        self._connection_factory = connection_factory
-        self._evidence_records = tuple(evidence_records)
-
-    def persist(self, bundle: CanonicalRecommendationWrite) -> str:
+    def persist(self,bundle:CanonicalRecommendationWrite)->str:
         _validate_bundle(bundle)
-        conn = self._connection_factory()
-        cur = conn.cursor()
+        if self._forecast_path is not None:
+            validate_forecast_path(self._forecast_path)
+            if self._forecast_path.recommendation_id != bundle.recommendation_id:
+                raise ValueError("forecast path recommendation_id must match parent recommendation")
+        conn=self._connection_factory(); cur=conn.cursor()
         try:
             for evidence in self._evidence_records:
-                if evidence.ticker.strip().upper() != bundle.ticker.strip().upper():
-                    raise ValueError("evidence ticker must match recommendation ticker")
-                if not evidence.source_ref.strip():
-                    raise ValueError("canonical evidence source_ref is required")
-                if evidence.verification_status != "VERIFIED":
-                    raise ValueError("only VERIFIED evidence can be persisted for a production recommendation")
-
-                cur.execute(
-                    """
-                    select evidence_id
-                    from evidence_items
-                    where ticker=%s
-                      and source_ref=%s
-                      and verification_status='VERIFIED'
-                      and coalesce(content_hash,'')=coalesce(%s,'')
-                    order by ingestion_timestamp desc
-                    limit 1
-                    """,
-                    (
-                        evidence.ticker.upper(),
-                        evidence.source_ref,
-                        evidence.content_hash,
-                    ),
-                )
-                existing = cur.fetchone()
+                if evidence.ticker.strip().upper()!=bundle.ticker.strip().upper(): raise ValueError("evidence ticker must match recommendation ticker")
+                if not evidence.source_ref.strip(): raise ValueError("canonical evidence source_ref is required")
+                if evidence.verification_status!="VERIFIED": raise ValueError("only VERIFIED evidence can be persisted for a production recommendation")
+                cur.execute("select evidence_id from evidence_items where ticker=%s and source_ref=%s and verification_status='VERIFIED' and coalesce(content_hash,'')=coalesce(%s,'') order by ingestion_timestamp desc limit 1",(evidence.ticker.upper(),evidence.source_ref,evidence.content_hash))
+                existing=cur.fetchone()
                 if not existing:
-                    cur.execute(
-                        """
-                        insert into evidence_items (
-                          ticker,evidence_type,source_kind,capture_timestamp,
-                          publication_timestamp,event_timestamp,freshness,quality,
-                          verification_status,file_ref,source_ref,observation,content_hash
-                        ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        """,
-                        (
-                            evidence.ticker.upper(),
-                            evidence.evidence_type,
-                            evidence.source_kind,
-                            evidence.capture_timestamp,
-                            evidence.publication_timestamp,
-                            evidence.event_timestamp,
-                            evidence.freshness,
-                            evidence.quality,
-                            evidence.verification_status,
-                            evidence.file_ref,
-                            evidence.source_ref,
-                            evidence.observation,
-                            evidence.content_hash,
-                        ),
-                    )
-
-            cur.execute(
-                """
-                insert into edge_runs
-                  (command_type,ticker,run_timestamp,model_version,status,notes)
-                values (%s,%s,%s,%s,'STARTED',%s)
-                returning run_id
-                """,
-                (
-                    bundle.command_type,
-                    bundle.ticker.upper(),
-                    bundle.run_timestamp,
-                    bundle.model_version,
-                    "Autonomous governed EDGE run.",
-                ),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise RuntimeError("edge_runs insert did not return run_id")
-            run_id = row[0]
-
-            record_hash = _canonical_hash(bundle)
-            cur.execute(
-                """
-                insert into recommendations (
-                  recommendation_id,parent_recommendation_id,run_id,model_version,ticker,
-                  company_name,run_timestamp,forecast_horizon,bull_probability,base_probability,
-                  bear_probability,definitive_forecast,expected_price_zone_low,
-                  expected_price_zone_high,des,market_trust_score,market_trust_band,bot_score,
-                  bot_grade,decision_ladder,definitive_recommendation,holding_status_known,
-                  event_shock_level,active_override,evidence_gate_status,rationale,
-                  committed_at,record_hash
-                ) values (
-                  %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                  %s,%s,%s,%s,%s,%s,%s,%s
-                )
-                """,
-                (
-                    bundle.recommendation_id,
-                    bundle.parent_recommendation_id,
-                    run_id,
-                    bundle.model_version,
-                    bundle.ticker.upper(),
-                    bundle.company_name,
-                    bundle.run_timestamp,
-                    bundle.forecast_horizon,
-                    bundle.bull_probability,
-                    bundle.base_probability,
-                    bundle.bear_probability,
-                    bundle.definitive_forecast,
-                    bundle.expected_price_zone_low,
-                    bundle.expected_price_zone_high,
-                    bundle.des,
-                    bundle.market_trust_score,
-                    bundle.market_trust_band,
-                    bundle.bot_score,
-                    bundle.bot_grade,
-                    bundle.decision_ladder,
-                    bundle.definitive_recommendation,
-                    bundle.holding_status_known,
-                    bundle.event_shock_level,
-                    bundle.active_override,
-                    bundle.evidence_gate_status,
-                    bundle.rationale,
-                    bundle.run_timestamp,
-                    record_hash,
-                ),
-            )
-
+                    cur.execute("insert into evidence_items (ticker,evidence_type,source_kind,capture_timestamp,publication_timestamp,event_timestamp,freshness,quality,verification_status,file_ref,source_ref,observation,content_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(evidence.ticker.upper(),evidence.evidence_type,evidence.source_kind,evidence.capture_timestamp,evidence.publication_timestamp,evidence.event_timestamp,evidence.freshness,evidence.quality,evidence.verification_status,evidence.file_ref,evidence.source_ref,evidence.observation,evidence.content_hash))
+            cur.execute("insert into edge_runs (command_type,ticker,run_timestamp,model_version,status,notes) values (%s,%s,%s,%s,'STARTED',%s) returning run_id",(bundle.command_type,bundle.ticker.upper(),bundle.run_timestamp,bundle.model_version,"Autonomous governed EDGE run."))
+            row=cur.fetchone()
+            if not row: raise RuntimeError("edge_runs insert did not return run_id")
+            run_id=row[0]; record_hash=_canonical_hash(bundle)
+            cur.execute("""insert into recommendations (recommendation_id,parent_recommendation_id,run_id,model_version,ticker,company_name,run_timestamp,forecast_horizon,bull_probability,base_probability,bear_probability,definitive_forecast,expected_price_zone_low,expected_price_zone_high,des,market_trust_score,market_trust_band,bot_score,bot_grade,decision_ladder,definitive_recommendation,holding_status_known,event_shock_level,active_override,evidence_gate_status,rationale,committed_at,record_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",(bundle.recommendation_id,bundle.parent_recommendation_id,run_id,bundle.model_version,bundle.ticker.upper(),bundle.company_name,bundle.run_timestamp,bundle.forecast_horizon,bundle.bull_probability,bundle.base_probability,bundle.bear_probability,bundle.definitive_forecast,bundle.expected_price_zone_low,bundle.expected_price_zone_high,bundle.des,bundle.market_trust_score,bundle.market_trust_band,bundle.bot_score,bundle.bot_grade,bundle.decision_ladder,bundle.definitive_recommendation,bundle.holding_status_known,bundle.event_shock_level,bundle.active_override,bundle.evidence_gate_status,bundle.rationale,bundle.run_timestamp,record_hash))
+            if self._forecast_path is not None:
+                persist_forecast_path_with_cursor(cur,self._forecast_path)
             if bundle.research_bundle_id:
-                cur.execute(
-                    """
-                    select ticker,status
-                      from edge_research_bundles
-                     where bundle_id=%s
-                     limit 1
-                    """,
-                    (bundle.research_bundle_id,),
-                )
-                research_row=cur.fetchone()
-                if not research_row:
-                    raise RuntimeError("governed research bundle not found during persistence")
-                if str(research_row[0]).upper()!=bundle.ticker.upper() or str(research_row[1])!="READY":
-                    raise RuntimeError("governed research bundle is not eligible for recommendation linkage")
-                cur.execute(
-                    """
-                    insert into recommendation_research_bundle(recommendation_id,bundle_id)
-                    values (%s,%s)
-                    """,
-                    (bundle.recommendation_id,bundle.research_bundle_id),
-                )
-
-            cur.execute(
-                """
-                insert into recommendation_lifecycle (
-                  recommendation_id,tracking_policy,include_in_master_metrics,horizon_days,
-                  expiry_trading_date,status,standard_model_capital,actual_user_executed
-                ) values (%s,%s,false,%s,%s,'OPEN',100,false)
-                """,
-                (
-                    bundle.recommendation_id,
-                    bundle.tracking_policy,
-                    bundle.horizon_days,
-                    bundle.expiry_trading_date,
-                ),
-            )
-
-            cur.execute(
-                """
-                insert into recommendation_performance (
-                  recommendation_id,reference_price,current_price,current_return_pct,
-                  outcome_verdict,last_assessed_at,notes
-                ) values (%s,%s,%s,0,'OPEN',%s,%s)
-                """,
-                (
-                    bundle.recommendation_id,
-                    bundle.reference_price,
-                    bundle.reference_price,
-                    bundle.run_timestamp,
-                    "D0 autonomous reference; final efficacy remains horizon-governed.",
-                ),
-            )
-
-            refs = tuple(r.strip() for r in bundle.evidence_source_refs if r.strip())
-            cur.execute(
-                """
-                select evidence_id,source_ref
-                from evidence_items
-                where ticker=%s
-                  and verification_status='VERIFIED'
-                  and source_ref = any(%s)
-                """,
-                (bundle.ticker.upper(), list(refs)),
-            )
-            found = cur.fetchall()
-            found_by_ref = {source_ref: evidence_id for evidence_id, source_ref in found}
-            missing = [ref for ref in refs if ref not in found_by_ref]
-            if missing:
-                raise RuntimeError(
-                    "verified canonical evidence not found for source_ref(s): " + ", ".join(missing)
-                )
-            for ref in refs:
-                cur.execute(
-                    """
-                    insert into recommendation_evidence
-                      (recommendation_id,evidence_id,use_role)
-                    values (%s,%s,'ANALYTICAL_EVIDENCE')
-                    """,
-                    (bundle.recommendation_id, found_by_ref[ref]),
-                )
-
+                cur.execute("select ticker,status from edge_research_bundles where bundle_id=%s limit 1",(bundle.research_bundle_id,)); research_row=cur.fetchone()
+                if not research_row: raise RuntimeError("governed research bundle not found during persistence")
+                if str(research_row[0]).upper()!=bundle.ticker.upper() or str(research_row[1])!="READY": raise RuntimeError("governed research bundle is not eligible for recommendation linkage")
+                cur.execute("insert into recommendation_research_bundle(recommendation_id,bundle_id) values (%s,%s)",(bundle.recommendation_id,bundle.research_bundle_id))
+            cur.execute("insert into recommendation_lifecycle (recommendation_id,tracking_policy,include_in_master_metrics,horizon_days,expiry_trading_date,status,standard_model_capital,actual_user_executed) values (%s,%s,false,%s,%s,'OPEN',100,false)",(bundle.recommendation_id,bundle.tracking_policy,bundle.horizon_days,bundle.expiry_trading_date))
+            cur.execute("insert into recommendation_performance (recommendation_id,reference_price,current_price,current_return_pct,outcome_verdict,last_assessed_at,notes) values (%s,%s,%s,0,'OPEN',%s,%s)",(bundle.recommendation_id,bundle.reference_price,bundle.reference_price,bundle.run_timestamp,"D0 autonomous reference; final efficacy remains horizon-governed."))
+            refs=tuple(r.strip() for r in bundle.evidence_source_refs if r.strip()); cur.execute("select evidence_id,source_ref from evidence_items where ticker=%s and verification_status='VERIFIED' and source_ref = any(%s)",(bundle.ticker.upper(),list(refs))); found=cur.fetchall(); found_by_ref={source_ref:evidence_id for evidence_id,source_ref in found}; missing=[ref for ref in refs if ref not in found_by_ref]
+            if missing: raise RuntimeError("verified canonical evidence not found for source_ref(s): "+", ".join(missing))
+            for ref in refs: cur.execute("insert into recommendation_evidence (recommendation_id,evidence_id,use_role) values (%s,%s,'ANALYTICAL_EVIDENCE')",(bundle.recommendation_id,found_by_ref[ref]))
             for row in bundle.component_scores:
-                cur.execute(
-                    """
-                    insert into component_scores (
-                      recommendation_id,component,original_weight,raw_score,
-                      normalized_direction,evidence_quality,availability_status,
-                      normalized_weight,weighted_contribution,conflict_flag,
-                      gate_override_flag,notes
-                    ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """,
-                    (
-                        bundle.recommendation_id,row.component,row.original_weight,row.raw_score,
-                        row.normalized_direction,row.evidence_quality,row.availability_status,
-                        row.normalized_weight,row.weighted_contribution,row.conflict_flag,
-                        row.gate_override_flag,row.notes,
-                    ),
-                )
-
-            mt = bundle.market_trust
-            cur.execute(
-                """
-                insert into market_trust (
-                  recommendation_id,evidence_quality_score,freshness_score,completeness_score,
-                  directional_agreement_score,market_confirmation_score,market_trust_score,
-                  market_trust_band
-                ) values (%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (
-                    bundle.recommendation_id,mt.evidence_quality_score,mt.freshness_score,
-                    mt.completeness_score,mt.directional_agreement_score,
-                    mt.market_confirmation_score,mt.market_trust_score,mt.market_trust_band,
-                ),
-            )
-
-            bot = bundle.bot
-            cur.execute(
-                """
-                insert into bot_scores (
-                  recommendation_id,forecast_edge,market_trust,structure_pattern_quality,
-                  pv_pvpo_confirmation,catalyst_asymmetry,execution_quality,bot_score,
-                  bot_grade,decision_ladder
-                ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (
-                    bundle.recommendation_id,bot.forecast_edge,bot.market_trust,
-                    bot.structure_pattern_quality,bot.pv_pvpo_confirmation,
-                    bot.catalyst_asymmetry,bot.execution_quality,bot.bot_score,
-                    bot.bot_grade,bot.decision_ladder,
-                ),
-            )
-
-            ep = bundle.execution_plan
-            cur.execute(
-                """
-                insert into execution_plans (
-                  recommendation_id,instrument,entry_low,entry_high,stop_price,invalidation_text,
-                  target1,target2,risk_per_unit,reward_to_t1,reward_to_t2,rr_t1,rr_t2,
-                  risk_unit_category,time_exit,option_strike,option_expiry,observed_premium,
-                  execution_quality_score,execution_quality_level,option_suitability_status,notes
-                ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (
-                    bundle.recommendation_id,ep.instrument,ep.entry_low,ep.entry_high,
-                    ep.stop_price,ep.invalidation_text,ep.target1,ep.target2,ep.risk_per_unit,
-                    ep.reward_to_t1,ep.reward_to_t2,ep.rr_t1,ep.rr_t2,ep.risk_unit_category,
-                    ep.time_exit,ep.option_strike,ep.option_expiry,ep.observed_premium,
-                    ep.execution_quality_score,ep.execution_quality_level,
-                    ep.option_suitability_status,ep.notes,
-                ),
-            )
-
-            for idx, due_date in enumerate(bundle.checkpoint_dates, start=1):
-                cur.execute(
-                    """
-                    insert into outcome_checkpoints (
-                      recommendation_id,checkpoint_type,due_date,status,notes
-                    ) values (%s,%s,%s,'DUE',%s)
-                    """,
-                    (
-                        bundle.recommendation_id,
-                        f"D+{idx}",
-                        due_date,
-                        "V2 final checkpoint." if idx == 5 else "V2 checkpoint.",
-                    ),
-                )
-
-            cur.execute(
-                "update edge_runs set status='COMMITTED' where run_id=%s",
-                (run_id,),
-            )
-            register_recommendation_governance_values(
-                conn,
-                recommendation_id=bundle.recommendation_id,
-                ticker=bundle.ticker,
-                run_at=bundle.run_timestamp,
-                completed_at=datetime.now(bundle.run_timestamp.tzinfo),
-                horizon=bundle.forecast_horizon,
-                research_fresh_at=bundle.research_fresh_at,
-                requested_at=bundle.canonical_requested_at,
-                canonical_attempt_slot=bundle.canonical_attempt_slot,
-            )
-            conn.commit()
-            return bundle.recommendation_id
+                cur.execute("insert into component_scores (recommendation_id,component,original_weight,raw_score,normalized_direction,evidence_quality,availability_status,normalized_weight,weighted_contribution,conflict_flag,gate_override_flag,notes) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(bundle.recommendation_id,row.component,row.original_weight,row.raw_score,row.normalized_direction,row.evidence_quality,row.availability_status,row.normalized_weight,row.weighted_contribution,row.conflict_flag,row.gate_override_flag,row.notes))
+            mt=bundle.market_trust; cur.execute("insert into market_trust (recommendation_id,evidence_quality_score,freshness_score,completeness_score,directional_agreement_score,market_confirmation_score,market_trust_score,market_trust_band) values (%s,%s,%s,%s,%s,%s,%s,%s)",(bundle.recommendation_id,mt.evidence_quality_score,mt.freshness_score,mt.completeness_score,mt.directional_agreement_score,mt.market_confirmation_score,mt.market_trust_score,mt.market_trust_band))
+            bot=bundle.bot; cur.execute("insert into bot_scores (recommendation_id,forecast_edge,market_trust,structure_pattern_quality,pv_pvpo_confirmation,catalyst_asymmetry,execution_quality,bot_score,bot_grade,decision_ladder) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(bundle.recommendation_id,bot.forecast_edge,bot.market_trust,bot.structure_pattern_quality,bot.pv_pvpo_confirmation,bot.catalyst_asymmetry,bot.execution_quality,bot.bot_score,bot.bot_grade,bot.decision_ladder))
+            ep=bundle.execution_plan; cur.execute("insert into execution_plans (recommendation_id,instrument,entry_low,entry_high,stop_price,invalidation_text,target1,target2,risk_per_unit,reward_to_t1,reward_to_t2,rr_t1,rr_t2,risk_unit_category,time_exit,option_strike,option_expiry,observed_premium,execution_quality_score,execution_quality_level,option_suitability_status,notes) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(bundle.recommendation_id,ep.instrument,ep.entry_low,ep.entry_high,ep.stop_price,ep.invalidation_text,ep.target1,ep.target2,ep.risk_per_unit,ep.reward_to_t1,ep.reward_to_t2,ep.rr_t1,ep.rr_t2,ep.risk_unit_category,ep.time_exit,ep.option_strike,ep.option_expiry,ep.observed_premium,ep.execution_quality_score,ep.execution_quality_level,ep.option_suitability_status,ep.notes))
+            for idx,due_date in enumerate(bundle.checkpoint_dates,start=1): cur.execute("insert into outcome_checkpoints (recommendation_id,checkpoint_type,due_date,status,notes) values (%s,%s,%s,'DUE',%s)",(bundle.recommendation_id,f"D+{idx}",due_date,"V2 final checkpoint." if idx==5 else "V2 checkpoint."))
+            cur.execute("update edge_runs set status='COMMITTED' where run_id=%s",(run_id,))
+            register_recommendation_governance_values(conn,recommendation_id=bundle.recommendation_id,ticker=bundle.ticker,run_at=bundle.run_timestamp,completed_at=datetime.now(bundle.run_timestamp.tzinfo),horizon=bundle.forecast_horizon,research_fresh_at=bundle.research_fresh_at,requested_at=bundle.canonical_requested_at,canonical_attempt_slot=bundle.canonical_attempt_slot)
+            conn.commit(); return bundle.recommendation_id
         except Exception:
-            conn.rollback()
-            raise
+            conn.rollback(); raise
         finally:
-            cur.close()
-            conn.close()
+            cur.close(); conn.close()

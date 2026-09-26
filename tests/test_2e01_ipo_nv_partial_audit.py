@@ -1,6 +1,6 @@
 import pytest
 
-from research.2e01_ipo_nv_partial_audit import FailureClass, classify_record, classify_sample
+from research.ipo_nv_partial_audit import FailureClass, classify_record, classify_sample
 
 
 def row(**overrides):

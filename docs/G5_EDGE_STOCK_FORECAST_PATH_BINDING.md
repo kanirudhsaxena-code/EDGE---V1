@@ -6,7 +6,7 @@ Authoritative programme gate: MDOS Master Programme Tracker → Phase 2.0 Fresh 
 
 ## Information Requirements
 
-Each issuance contains exactly five ordered stock horizons: D, D+1, D+2, D+3 and D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover ATR/realised volatility, liquidity, gap/event risk and stock/sector regime. Missing evidence fails closed.
+Each issuance contains exactly five ordered stock horizons: D, D+1,D+2,D+3,D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover ATR/realised volatility, liquidity, gap/event risk and stock/sector regime. Missing evidence fails closed.
 
 Engineering acceptance may use realistic fixtures only when unmistakably `TEST/SYNTHETIC/SHADOW`. Such fixtures are not efficacy evidence and must be ephemeral or hard-isolated from production readers, canonical selection, official efficacy, Learning Lab production populations, Market Trust, recommendations and trading behavior.
 
@@ -28,13 +28,13 @@ No Phase 2 write to main/default, live DB mutation, canonical replacement, deplo
 
 ## Current gate state — 26-Sep-2026
 
-- **G5-A — accepted:** atomic exact-five D:D+4 SHADOW storage already proven on the governed branch.
-- **G5-B — accepted:** exact recovery, repeat retrieval, lineage preservation, incomplete-path rejection and tamper rejection now pass after canonical numeric hash normalization across DB round trips.
-- **G5-C — accepted:** explicit NO TRADE five-horizon recovery proof is included and passes in the same CI suite.
-- **G5-D — open:** Engine→persistence→Console/ChatGPT exact read-model integration remains to be bound cross-repo.
+- **G5-A — accepted:** atomic exact-five D:D+4 SHADOW storage proven on the governed branch.
+- **G5-B — accepted:** exact recovery, repeat retrieval, lineage preservation, incomplete-path rejection and tamper rejection pass after canonical numeric hash normalization across DB round trips.
+- **G5-C — accepted:** explicit NO TRADE five-horizon recovery proof passes in the same CI suite.
+- **G5-D — accepted:** EDGE-CONSOLE current-read integration now reads the immutable path header plus exact ordered five rows by recommendation ID, exposes payload hash and lineage-bearing rows to the Console/ChatGPT read model, and fails closed on incomplete/misordered persistence. Console CI #462 and the companion Learning Lab acceptance both pass.
 - **G5-E — open:** genuine real-input producer remains to be proven without invented/interpolated horizon parameters.
 - **G5-F — open:** genuine canonical/matured efficacy population must record both hits and misses where evidence is available.
-- **G5-G — in progress:** repository evidence updated through the B/C recovery acceptance checkpoint.
+- **G5-G — in progress:** repository evidence aligned through the A:D engineering acceptance checkpoint; final closure still depends on E/F evidence.
 
 ## Traceability
 
@@ -43,11 +43,14 @@ No Phase 2 write to main/default, live DB mutation, canonical replacement, deplo
 - `bb6c11d3` — atomic parent recommendation + SHADOW path binding.
 - `a2ccd14d` — atomic binding, rollback and parent-ID guard tests.
 - `95cc2fe5` — mandatory calibration evidence-reference value integrity; passed CI #237 / run 36199407423.
-- `e138a0d9` — latest intake identity/session guard checkpoint; passed EDGE V1 CI #249 / run 36222436584.
+- `e138a0d9` — intake identity/session guard checkpoint; passed EDGE V1 CI #249 / run 36222436584.
 - `3650f2cb` — G5-B read-only exact SHADOW recovery adapter with stored-hash verification.
-- `580e7e22` — initial G5-B regression coverage for exact five-slot recovery, repeat retrieval, lineage preservation, tamper rejection and incomplete-path rejection using `TEST/SYNTHETIC/SHADOW` fixtures.
+- `580e7e22` — G5-B regression coverage for exact five-slot recovery, repeat retrieval, lineage preservation, tamper rejection and incomplete-path rejection using TEST/SYNTHETIC/SHADOW fixtures.
 - `89c76524` — canonical numeric hash normalization fix for DB round-trip stability.
 - `be5aa2a3` — isolated G5-C NO TRADE recovery acceptance fixture.
 - `709330e9` — removes unintended connection-lifecycle regression while preserving the hash fix.
 - EDGE V1 CI **#264 / run 36235052057** — **SUCCESS**; full pytest suite green with G5-B recovery and G5-C NO TRADE coverage included.
-- Drive amendment advanced additively with **G5 Closure Acceptance Addendum V1.1 — 26-Sep-2026**; prior document history preserved.
+- EDGE-CONSOLE `380dc915` — current-read integration for persisted exact D:D+4 path.
+- EDGE-CONSOLE `c50cabbb` — regression lock for exact five-row read model and no-write/no-efficacy-mutation boundary.
+- EDGE Console CI **#462 / run 36235368163** — **SUCCESS**; companion G4 Learning Lab Acceptance **#14 / run 36235368198** also **SUCCESS**.
+- Drive amendment remains additive under **G5 Closure Acceptance Addendum V1.1 — 26-Sep-2026**; prior document history preserved.

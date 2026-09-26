@@ -7,10 +7,29 @@ groups so bounded attributable subsets can be frozen without hiding rejected row
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from src.edge_truth_baseline import HORIZONS
+
+
+def _validate_intake_containers(
+    observations: Sequence[Mapping[str, Any]],
+    session_sequences: Mapping[str, Mapping[str, Any]],
+) -> None:
+    if isinstance(observations, (str, bytes)) or not isinstance(observations, Sequence):
+        raise ValueError("observations must be a sequence of mappings")
+    if not isinstance(session_sequences, Mapping):
+        raise ValueError("session_sequences must be a mapping")
+    for index, row in enumerate(observations):
+        if not isinstance(row, Mapping):
+            raise ValueError(f"observation {index} must be a mapping")
+    for key, proof in session_sequences.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("session sequence keys must be non-blank strings")
+        if not isinstance(proof, Mapping):
+            raise ValueError(f"session sequence {key!r} must be a mapping")
 
 
 def _group_key(row: Mapping[str, Any]) -> str:
@@ -21,6 +40,7 @@ def audit_candidate_evidence(
     observations: Sequence[Mapping[str, Any]],
     session_sequences: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
+    _validate_intake_containers(observations, session_sequences)
     groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in observations:
         groups[_group_key(row)].append(row)

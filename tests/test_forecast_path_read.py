@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 import json
 import pytest
 
@@ -14,7 +15,7 @@ def fixture_path():
 
 
 class Cursor:
-    def __init__(self,path,tamper=False): self.path=path; self.tamper=tamper; self.step=0
+    def __init__(self,path,tamper=False,use_decimal=False): self.path=path; self.tamper=tamper; self.use_decimal=use_decimal; self.step=0
     def execute(self,sql,params): self.step += 1
     def fetchone(self):
         p=self.path
@@ -23,13 +24,16 @@ class Cursor:
         out=[]
         for i,r in enumerate(self.path.rows):
             low=r.outer_expected_zone_low + (1 if self.tamper and i==2 else 0)
-            out.append((i,r.horizon_label,r.target_trading_date,r.direction,r.bull_probability,r.base_probability,r.bear_probability,r.expected_centre,low,r.outer_expected_zone_high,r.evidence_basis,r.regime_context,r.verification_state,json.dumps(dict(r.lineage))))
+            def db_num(value):
+                if value is None or not self.use_decimal: return value
+                return Decimal(str(value))
+            out.append((i,r.horizon_label,r.target_trading_date,r.direction,db_num(r.bull_probability),db_num(r.base_probability),db_num(r.bear_probability),db_num(r.expected_centre),db_num(low),db_num(r.outer_expected_zone_high),r.evidence_basis,r.regime_context,r.verification_state,json.dumps(dict(r.lineage))))
         return out
     def close(self): pass
 
 
 class Conn:
-    def __init__(self,path,tamper=False): self.cur=Cursor(path,tamper); self.closed=False
+    def __init__(self,path,tamper=False,use_decimal=False): self.cur=Cursor(path,tamper,use_decimal); self.closed=False
     def cursor(self): return self.cur
     def close(self): self.closed=True
 
@@ -49,6 +53,12 @@ def test_repeat_retrieval_is_byte_semantically_stable():
     first=ForecastPathReadAdapter(lambda:Conn(original)).recover(original.recommendation_id)
     second=ForecastPathReadAdapter(lambda:Conn(original)).recover(original.recommendation_id)
     assert forecast_path_hash(first)==forecast_path_hash(second)==forecast_path_hash(original)
+
+
+def test_database_decimal_round_trip_preserves_hash_identity():
+    original=fixture_path()
+    recovered=ForecastPathReadAdapter(lambda:Conn(original,use_decimal=True)).recover(original.recommendation_id)
+    assert forecast_path_hash(recovered)==forecast_path_hash(original)
 
 
 def test_tampered_persisted_row_fails_immutable_hash_verification():

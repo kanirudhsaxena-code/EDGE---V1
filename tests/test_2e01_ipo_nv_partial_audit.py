@@ -39,6 +39,23 @@ def test_boolean_evidence_is_fail_closed(field):
         classify_record(row(**{field: "unknown"}))
 
 
+@pytest.mark.parametrize("record", [None, [], "bad-record", 7, True])
+def test_record_container_is_fail_closed(record):
+    with pytest.raises(ValueError, match="must be a mapping"):
+        classify_record(record)
+
+
+@pytest.mark.parametrize("records", [None, {}, "bad-sample", b"bad-sample", 7])
+def test_sample_container_is_fail_closed(records):
+    with pytest.raises(ValueError, match="sequence of mappings"):
+        classify_sample(records)
+
+
+def test_assessment_ids_are_normalized_before_duplicate_detection():
+    with pytest.raises(ValueError, match="duplicate assessment_id: ipo-1"):
+        classify_sample([row(assessment_id=" ipo-1 "), row(assessment_id="ipo-1")])
+
+
 def test_sample_requires_unique_ids():
     with pytest.raises(ValueError, match="duplicate"):
         classify_sample([row(), row()])

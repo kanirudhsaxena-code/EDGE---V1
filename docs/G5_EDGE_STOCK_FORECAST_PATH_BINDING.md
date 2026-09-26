@@ -26,6 +26,16 @@ Persistence version is `EDGE_STOCK_FORECAST_PATH_V1`. One immutable path header 
 
 No Phase 2 write to main/default, live DB mutation, canonical replacement, deployment/recovery/import trigger, or production behavior/presentation change is authorized. G5 is DONE only when G5-A:G pass; G6 implementation remains blocked until then.
 
+## Current gate state — 26-Sep-2026
+
+- **G5-A — accepted:** atomic exact-five D:D+4 SHADOW storage already proven on the governed branch.
+- **G5-B — accepted:** exact recovery, repeat retrieval, lineage preservation, incomplete-path rejection and tamper rejection now pass after canonical numeric hash normalization across DB round trips.
+- **G5-C — accepted:** explicit NO TRADE five-horizon recovery proof is included and passes in the same CI suite.
+- **G5-D — open:** Engine→persistence→Console/ChatGPT exact read-model integration remains to be bound cross-repo.
+- **G5-E — open:** genuine real-input producer remains to be proven without invented/interpolated horizon parameters.
+- **G5-F — open:** genuine canonical/matured efficacy population must record both hits and misses where evidence is available.
+- **G5-G — in progress:** repository evidence updated through the B/C recovery acceptance checkpoint.
+
 ## Traceability
 
 - PR #72 — governed G5 engine branch, OPEN/DRAFT.
@@ -35,5 +45,9 @@ No Phase 2 write to main/default, live DB mutation, canonical replacement, deplo
 - `95cc2fe5` — mandatory calibration evidence-reference value integrity; passed CI #237 / run 36199407423.
 - `e138a0d9` — latest intake identity/session guard checkpoint; passed EDGE V1 CI #249 / run 36222436584.
 - `3650f2cb` — G5-B read-only exact SHADOW recovery adapter with stored-hash verification.
-- `580e7e22` — G5-B regression coverage for exact five-slot recovery, repeat retrieval, lineage preservation, tamper rejection and incomplete-path rejection using `TEST/SYNTHETIC/SHADOW` fixtures; CI pending at this checkpoint.
+- `580e7e22` — initial G5-B regression coverage for exact five-slot recovery, repeat retrieval, lineage preservation, tamper rejection and incomplete-path rejection using `TEST/SYNTHETIC/SHADOW` fixtures.
+- `89c76524` — canonical numeric hash normalization fix for DB round-trip stability.
+- `be5aa2a3` — isolated G5-C NO TRADE recovery acceptance fixture.
+- `709330e9` — removes unintended connection-lifecycle regression while preserving the hash fix.
+- EDGE V1 CI **#264 / run 36235052057** — **SUCCESS**; full pytest suite green with G5-B recovery and G5-C NO TRADE coverage included.
 - Drive amendment advanced additively with **G5 Closure Acceptance Addendum V1.1 — 26-Sep-2026**; prior document history preserved.

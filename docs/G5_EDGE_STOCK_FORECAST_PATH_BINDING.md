@@ -1,43 +1,39 @@
 # G5 / 2A-L06 — EDGE Stocks D:D+4 SHADOW Forecast Path Binding
 
 Status: build in progress; SHADOW/additive only  
-Canonical binding: **EDGE V1 Master Specification - Production Backbone Addendum**, sections **G5 / 2A-L06 — EDGE STOCKS D:D+4 SHADOW FORECAST-PATH BINDING — V1.1** (24-Sep-2026) and **G5 / 2C-02 EVIDENCE READINESS ALIGNMENT — V1.2** (25-Sep-2026). V1.2 refines evidence proof only; it does not promote forecasting methodology.  
+Canonical binding: **EDGE V1 Master Specification - Production Backbone Addendum**, G5 bindings, plus **MDOS Output, Learning Lab & Core Zone Amendment V1.0**, additive **G5 Closure Acceptance Addendum V1.1** (26-Sep-2026). Prior versions remain authoritative history; this closure addendum clarifies acceptance and does not promote methodology.  
 Authoritative programme gate: MDOS Master Programme Tracker → Phase 2.0 Fresh Plan → G5.
 
 ## Information Requirements
 
-Each issuance contains exactly five ordered stock horizons: D, D+1, D+2, D+3 and D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover the governed ATR/realised-volatility, liquidity, gap/event-risk and stock/sector-regime boundary. Missing evidence fails closed. Each governed calibration dimension must retain attributable lineage; gap/event-risk evidence may not silently inherit an unrelated price/regime reference.
+Each issuance contains exactly five ordered stock horizons: D, D+1, D+2, D+3 and D+4. Every row carries its target trading session, complete BULL/BASE/BEAR probability vector, dominant direction, expected centre, Outer Expected Zone, evidence basis, regime context, verification state and immutable lineage. The path is linked to the parent recommendation and source run. Stock calibration evidence must be attributable and cover ATR/realised volatility, liquidity, gap/event risk and stock/sector regime. Missing evidence fails closed.
 
-Before historical evidence may support calibration, each ticker+issuance group must also expose an immutable D:D+4 session-sequence proof: five ordered target sessions, one governed trading-calendar version shared by all five rows, and attributable calendar-source identity/hash. This prevents calendar-day offsets or inferred holidays from masquerading as exchange-session evidence.
+Engineering acceptance may use realistic fixtures only when unmistakably `TEST/SYNTHETIC/SHADOW`. Such fixtures are not efficacy evidence and must be ephemeral or hard-isolated from production readers, canonical selection, official efficacy, Learning Lab production populations, Market Trust, recommendations and trading behavior.
 
 ## Logic / Methodology
 
 The producer may reuse the 5DR explicit-horizon architecture pattern, but not NIFTY numerical widths or parameters. It must not manufacture future rows by decaying/interpolating the aggregate EDGE call. Numerical calibration must be separately stock-specific and evidence-derived. The path remains SHADOW and additive. If a parent recommendation is published with a G5 path, recommendation and all five horizon rows must commit in one transaction or roll back together. NO TRADE does not suppress the path.
 
-2C-02 validation is evidence governance, not forecast calibration: complete horizon sets, exact row-to-session-sequence equality, unique/increasing target sessions, one calendar version and immutable calendar-source attribution fail closed when absent or inconsistent. No probability decay, width multiplier or expected-centre formula is introduced by this validation.
+G5 closure is separated into: **G5-A** atomic exact-five storage; **G5-B** exact recovery/repeat retrieval/immutability/lineage; **G5-C** NO TRADE storage+recovery; **G5-D** Engine→persistence→Console/ChatGPT read-model integration; **G5-E** genuine real-input producer; **G5-F** measurable genuine canonical/matured efficacy including misses; **G5-G** documentation/evidence alignment. Historical calibration/sample depth does not block A:D. Synthetic fixtures can prove engineering only, never efficacy.
 
-Frozen production behavior is unchanged: recommendation logic, Market Trust, canonical selection, official efficacy population and trading action.
+Frozen production behavior is unchanged: recommendation logic, Market Trust, canonical selection, official efficacy population, presentation/routing and trading action.
 
 ## Output Contract
 
-Persistence version is `EDGE_STOCK_FORECAST_PATH_V1`. One immutable path header is keyed by `recommendation_id`; exactly five immutable issuance rows are keyed by recommendation plus horizon index. Issuance rows are never rewritten. Later outcomes/evaluations must be appended separately under their governed lifecycle contract.
-
-The separate 2C-02 research baseline exposes immutable baseline identity/hash, source and missingness metadata, session-sequence proof, ordered historical observations and attributable matured outcomes. It is not a production output or official efficacy record.
+Persistence version is `EDGE_STOCK_FORECAST_PATH_V1`. One immutable path header is keyed by `recommendation_id`; exactly five immutable issuance rows are keyed by recommendation plus horizon index. Issuance rows are never rewritten. Exact recovery must reproduce the same payload hash and lineage and fail closed on missing/misordered/tampered persisted rows. Later outcomes/evaluations are separate governed lifecycle records.
 
 ## Safeguards / Dependencies / Acceptance
 
-G5 remains incomplete until genuine evidence-derived stock calibration is implemented without invented parameters, wired into publishing including NO TRADE, validated in engine and Console cross-repo acceptance, and all canonical/repository documentation remains aligned. G6 implementation remains blocked until G5 is DONE. 2C-02 remains incomplete until real historical observations populate and reproducibly validate the frozen contract.
+No Phase 2 write to main/default, live DB mutation, canonical replacement, deployment/recovery/import trigger, or production behavior/presentation change is authorized. G5 is DONE only when G5-A:G pass; G6 implementation remains blocked until then.
 
 ## Traceability
 
-- PR #72 — governed G5 engine branch.
+- PR #72 — governed G5 engine branch, OPEN/DRAFT.
 - `3453243c` — transaction-bound forecast-path persistence primitive.
 - `bb6c11d3` — atomic parent recommendation + SHADOW path binding.
-- `a2ccd14d` — atomic binding, rollback and parent-ID guard tests; atomic slice later accepted by CI #193.
-- Calibration-evidence-boundary head `a23409f` passed EDGE V1 CI #188.
-- 2C-02 integrity/timing head `1017033b` passed EDGE V1 CI #201 (run 36085103003).
-- `04250f74` + `b0ef9c10` — exchange-session proof validator and tests.
-- `cabac2c0` — aligned 2C-02 repository evidence contract.
-- `95cc2fe5` — mandatory calibration evidence-reference value integrity; passed EDGE V1 CI #237 (run 36199407423).
-- `bbf2f6fc` + `40e6421d` — require independently attributable gap/event-risk calibration evidence and regression coverage; CI pending at time of this binding update.
-- Canonical Drive companion advanced additively to G5 / 2C-02 Evidence Readiness Alignment V1.2 on 25-Sep-2026; V1.1 and earlier history preserved.
+- `a2ccd14d` — atomic binding, rollback and parent-ID guard tests.
+- `95cc2fe5` — mandatory calibration evidence-reference value integrity; passed CI #237 / run 36199407423.
+- `e138a0d9` — latest intake identity/session guard checkpoint; passed EDGE V1 CI #249 / run 36222436584.
+- `3650f2cb` — G5-B read-only exact SHADOW recovery adapter with stored-hash verification.
+- `580e7e22` — G5-B regression coverage for exact five-slot recovery, repeat retrieval, lineage preservation, tamper rejection and incomplete-path rejection using `TEST/SYNTHETIC/SHADOW` fixtures; CI pending at this checkpoint.
+- Drive amendment advanced additively with **G5 Closure Acceptance Addendum V1.1 — 26-Sep-2026**; prior document history preserved.

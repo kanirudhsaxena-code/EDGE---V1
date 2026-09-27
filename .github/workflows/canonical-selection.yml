@@ -10,7 +10,9 @@ on:
       - 'migrations/005_canonical_efficacy_timing.sql'
       - '.github/workflows/canonical-selection.yml'
   schedule:
-    - cron: '35 3 * * 1-5'
+    # 09:15 IST weekdays. Allows the 08:50 morning canonical issuance
+    # and the independent 09:00 watchdog/recovery window to complete first.
+    - cron: '45 3 * * 1-5'
 
 permissions:
   contents: read

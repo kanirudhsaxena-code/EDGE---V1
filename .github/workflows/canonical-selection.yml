@@ -12,6 +12,7 @@ on:
   schedule:
     # 09:15 IST weekdays. Allows the 08:50 morning canonical issuance
     # and the independent 09:00 watchdog/recovery window to complete first.
+    # Keep tests/test_canonical_governance.py locked to this exact schedule.
     - cron: '45 3 * * 1-5'
 
 permissions:

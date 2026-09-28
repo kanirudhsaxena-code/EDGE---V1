@@ -10,10 +10,10 @@ on:
       - 'migrations/005_canonical_efficacy_timing.sql'
       - '.github/workflows/canonical-selection.yml'
   schedule:
-    # 09:15 IST weekdays. Allows the 08:50 morning canonical issuance
-    # and the independent 09:00 watchdog/recovery window to complete first.
+    # 09:20 IST weekdays. Selection/verification only: the ordinary canonical
+    # must already have been generated from valid pre-open evidence before 09:15.
     # Keep tests/test_canonical_governance.py locked to this exact schedule.
-    - cron: '45 3 * * 1-5'
+    - cron: '50 3 * * 1-5'
 
 permissions:
   contents: read

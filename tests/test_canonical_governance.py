@@ -33,6 +33,7 @@ def test_after_0855_is_not_ordinary_preopen_candidate():
 def test_overnight_after_us_close_is_fallback_candidate():
     run=datetime(2026,9,22,2,45,tzinfo=IST)
     out=classify_stock_run(run)
+    assert out["target_trading_date"]==date(2026,9,22)
     assert out["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL"
 
 
@@ -74,7 +75,7 @@ def test_persistence_registers_governance_and_does_not_auto_include_master_metri
     assert "values (%s,%s,false,%s,%s,'OPEN',100,false)" in text
 
 
-def test_workflow_finalizes_after_nse_preopen_boundary():
+def test_workflow_finalizes_after_morning_watchdog():
     text=Path(".github/workflows/canonical-selection.yml").read_text(encoding="utf-8")
-    assert "cron: '35 3 * * 1-5'" in text
+    assert "cron: '45 3 * * 1-5'" in text
     assert "python -m src.canonical_governance_cli" in text

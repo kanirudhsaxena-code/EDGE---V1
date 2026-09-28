@@ -17,15 +17,21 @@ def test_legacy_run_is_legacy_candidate_before_activation():
     assert out["candidate_type"]=="LEGACY_CANDIDATE"
 
 
-def test_preopen_0855_is_canonical_candidate():
-    run=datetime(2026,9,22,8,55,tzinfo=IST)
+def test_preopen_0910_is_canonical_candidate():
+    run=datetime(2026,9,22,9,10,tzinfo=IST)
     out=classify_stock_run(run)
     assert out["target_trading_date"]==date(2026,9,22)
     assert out["candidate_type"]=="PREOPEN_CANONICAL"
 
 
-def test_after_0855_is_not_ordinary_preopen_candidate():
-    run=datetime(2026,9,22,8,56,tzinfo=IST)
+def test_preopen_0914_is_canonical_candidate():
+    run=datetime(2026,9,22,9,14,tzinfo=IST)
+    out=classify_stock_run(run)
+    assert out["candidate_type"]=="PREOPEN_CANONICAL"
+
+
+def test_0915_normal_open_is_not_ordinary_preopen_candidate():
+    run=datetime(2026,9,22,9,15,tzinfo=IST)
     out=classify_stock_run(run)
     assert out["candidate_type"]=="DIAGNOSTIC_SNAPSHOT"
 
@@ -55,7 +61,7 @@ def test_canonical_key_includes_ticker_target_and_horizon():
 
 
 def test_nyse_close_uses_dst_aware_time():
-    target_open=datetime(2026,9,22,9,0,tzinfo=IST)
+    target_open=datetime(2026,9,22,9,15,tzinfo=IST)
     close=last_nyse_close_before(target_open)
     # Sep is U.S. daylight-saving time: 16:00 ET = 01:30 IST next day.
     assert close.isoformat().startswith("2026-09-22T01:30:00")
@@ -75,7 +81,7 @@ def test_persistence_registers_governance_and_does_not_auto_include_master_metri
     assert "values (%s,%s,false,%s,%s,'OPEN',100,false)" in text
 
 
-def test_workflow_finalizes_after_morning_watchdog():
+def test_workflow_finalizes_after_normal_open_without_recomputing_candidate():
     text=Path(".github/workflows/canonical-selection.yml").read_text(encoding="utf-8")
-    assert "cron: '45 3 * * 1-5'" in text
+    assert "cron: '50 3 * * 1-5'" in text
     assert "python -m src.canonical_governance_cli" in text

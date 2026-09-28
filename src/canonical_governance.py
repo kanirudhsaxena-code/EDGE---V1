@@ -12,9 +12,11 @@ from zoneinfo import ZoneInfo
 IST=ZoneInfo("Asia/Kolkata")
 NY=ZoneInfo("America/New_York")
 ACTIVATION_TARGET_DATE=date(2026,9,22)
-PREOPEN_START=time(8,40)
-PREOPEN_REQUEST_CUTOFF=time(8,55)
-HARD_BOUNDARY=time(9,0)
+# P0-07: ordinary stock canonical issuance uses the genuine NSE pre-open
+# matching/opening-price phase and must complete before normal market open.
+PREOPEN_START=time(9,10)
+PREOPEN_REQUEST_CUTOFF=time(9,14,30)
+HARD_BOUNDARY=time(9,15)
 
 NSE_HOLIDAYS_2026={
     date(2026,1,15),date(2026,1,26),date(2026,2,19),date(2026,3,3),
@@ -278,7 +280,7 @@ def finalize_stock_canonicals(conn,now_ist:datetime|None=None)->int:
                     """,
                     (
                         key,ticker,target,horizon,ctype,rec_id,now_ist,
-                        f"{ctype}: latest valid complete governed recommendation selected under frozen timing policy.",
+                        f"{ctype}: latest valid complete governed recommendation selected under frozen pre-open timing policy.",
                     ),
                 )
                 if cur.rowcount:
@@ -302,7 +304,7 @@ def finalize_stock_canonicals(conn,now_ist:datetime|None=None)->int:
                     """,
                     (
                         key,ticker,target,horizon,now_ist,
-                        "No complete pre-open canonical or research-current overnight fallback existed by 09:00 IST.",
+                        "No complete ordinary pre-open canonical or research-current overnight fallback existed before the 09:15 IST normal-market boundary.",
                     ),
                 )
                 finalized+=max(cur.rowcount,0)

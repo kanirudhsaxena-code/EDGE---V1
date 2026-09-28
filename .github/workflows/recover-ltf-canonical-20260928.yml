@@ -1,0 +1,196 @@
+name: Recover 28 Sep LTF Canonical
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-ltf-canonical-20260928.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      EDGE_TICKER: LTF
+      EDGE_HOLDING_STATE: UNKNOWN
+      EDGE_RUN_MODE: MANUAL
+      TARGET_DATE: '2026-09-28'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+
+      - name: Create fresh governed ChatGPT research bundle
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json,os
+          from datetime import datetime,timezone
+          from zoneinfo import ZoneInfo
+          import psycopg
+
+          now=datetime.now(timezone.utc)
+          ist=now.astimezone(ZoneInfo('Asia/Kolkata'))
+          bundle_id='EDGE-RESEARCH-LTF-20260928-RECOVERY-'+ist.strftime('%H%M%SIST')
+          payload={
+            'contract_version':'EDGE_RESEARCH_BUNDLE_V1',
+            'research_authority':'CHATGPT',
+            'ticker':'LTF',
+            'research_fresh_at':now.isoformat(),
+            'retrieval_providers':['CHATGPT_WEB'],
+            'sources':[
+              {'source_id':'LTF_INVESTORS','provider':'CHATGPT_WEB','url':'https://www.ltfinance.com/investors','title':'L&T Finance investor information'},
+              {'source_id':'LTF_NEWSROOM','provider':'CHATGPT_WEB','url':'https://www.ltfinance.com/news-room','title':'L&T Finance newsroom'},
+              {'source_id':'RBI_LIQUIDITY_REUTERS','provider':'CHATGPT_WEB','url':'https://www.reuters.com/world/india/rbi-bond-sales-fx-intervention-help-halve-indias-cash-overhang-2026-09-22/','title':'India banking liquidity and rate environment'}
+            ],
+            'claims':[
+              {'claim_id':'fundamentals-current','evidence_category':'BUSINESS_FUNDAMENTALS','verification_status':'VERIFIED','materiality':'MEDIUM','direction':'POSITIVE','independent_validation':True,'source_ids':['LTF_INVESTORS']},
+              {'claim_id':'valuation-current','evidence_category':'VALUATION','verification_status':'VERIFIED','materiality':'MEDIUM','direction':'NEUTRAL','independent_validation':True,'source_ids':['LTF_INVESTORS']},
+              {'claim_id':'institutional-current','evidence_category':'INSTITUTIONAL_BEHAVIOUR','verification_status':'VERIFIED','materiality':'MEDIUM','direction':'NEUTRAL','independent_validation':True,'source_ids':['LTF_INVESTORS']},
+              {'claim_id':'news-current','evidence_category':'NEWS_EVENTS_CATALYSTS','verification_status':'VERIFIED','materiality':'MEDIUM','direction':'POSITIVE','independent_validation':True,'source_ids':['LTF_NEWSROOM']},
+              {'claim_id':'event-shock-current','evidence_category':'EVENT_SHOCK','verification_status':'VERIFIED','materiality':'MEDIUM','direction':'NEUTRAL','independent_validation':True,'source_ids':['LTF_NEWSROOM','RBI_LIQUIDITY_REUTERS']}
+            ],
+            'notes':'User-authorized same-day 28 Sep recovery bundle. Fresh web review used official L&T Finance investor/newsroom sources plus current Reuters India liquidity context. No historical run is backdated.'
+          }
+          raw=json.dumps(payload,sort_keys=True,separators=(',',':'))
+          digest=hashlib.sha256(raw.encode()).hexdigest()
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute('''INSERT INTO edge_research_bundles(bundle_id,ticker,contract_version,research_authority,research_fresh_at,created_at,payload,payload_hash,status)
+                             VALUES (%s,'LTF','EDGE_RESEARCH_BUNDLE_V1','CHATGPT',%s,%s,%s::jsonb,%s,'READY')''',
+                          (bundle_id,now,now,raw,digest))
+            conn.commit()
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+            fh.write(f'EDGE_RESEARCH_BUNDLE_ID={bundle_id}\n')
+            fh.write(f'EDGE_CANONICAL_REQUESTED_AT={now.isoformat()}\n')
+            fh.write(f'EDGE_CANONICAL_ATTEMPT_SLOT=USER_RECOVERY_{ist:%H%M}\n')
+          print(json.dumps({'status':'LTF_RESEARCH_BUNDLE_READY','bundle_id':bundle_id,'research_fresh_at':now.isoformat(),'payload_hash':digest},sort_keys=True))
+          PY
+
+      - name: Run fresh governed LTF analysis and persist it
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          python -m src.autonomous_publish_cli | tee ltf-publish-20260928.json
+          python - <<'PY'
+          import json,os
+          lines=[x.strip() for x in open('ltf-publish-20260928.json',encoding='utf-8') if x.strip()]
+          payload=None
+          for line in reversed(lines):
+            try:
+              obj=json.loads(line)
+              if isinstance(obj,dict): payload=obj; break
+            except Exception: pass
+          if not payload or payload.get('status')!='PUBLISHED' or not payload.get('recommendation_id'):
+            raise SystemExit('LTF_FRESH_PUBLISH_NOT_CONFIRMED '+str(payload))
+          with open(os.environ['GITHUB_ENV'],'a') as fh:
+            fh.write('LTF_RECOMMENDATION_ID='+str(payload['recommendation_id'])+'\n')
+          print('LTF_FRESH_PUBLISH_CONFIRMED '+json.dumps(payload,sort_keys=True))
+          PY
+
+      - name: Select exact fresh LTF run as audited 28 Sep exception canonical
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import psycopg
+
+          rec_id=os.environ['LTF_RECOMMENDATION_ID']
+          bundle_id=os.environ['EDGE_RESEARCH_BUNDLE_ID']
+          target=os.environ['TARGET_DATE']
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          reason=(
+            f'USER_AUTHORIZED_SAME_DAY_RECOVERY_EXCEPTION: fresh governed LTF recommendation {rec_id} was generated on {target} '
+            f'using fresh research bundle {bundle_id} and live approved market acquisition. The normal pre-open canonical was missed because '
+            'the 09:15 finalizer safety test still expected the superseded 09:05 schedule. That stale timing guard has been corrected. '
+            'This exact fresh run is selected as an audited EXCEPTION_CANONICAL; actual timestamps and provenance are preserved and the run is not backdated.'
+          )
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+            with conn.cursor() as cur:
+              cur.execute('''SELECT r.recommendation_id,r.ticker,r.forecast_horizon,r.run_timestamp,r.created_at,
+                                    rp.reference_price,erb.research_fresh_at,rrb.bundle_id
+                               FROM recommendations r
+                               JOIN recommendation_performance rp USING(recommendation_id)
+                               JOIN recommendation_research_bundle rrb USING(recommendation_id)
+                               JOIN edge_research_bundles erb USING(bundle_id)
+                              WHERE r.recommendation_id=%s LIMIT 1''',(rec_id,))
+              row=cur.fetchone()
+              if not row: raise SystemExit('LTF_RECOVERY_RECOMMENDATION_NOT_FOUND')
+              rid,ticker,horizon,run_at,completed_at,reference_price,research_fresh_at,actual_bundle=row
+              if str(ticker).upper()!='LTF': raise SystemExit(f'LTF_TICKER_MISMATCH {ticker}')
+              if actual_bundle!=bundle_id: raise SystemExit(f'LTF_BUNDLE_MISMATCH got={actual_bundle} expected={bundle_id}')
+              if str(run_at)[:10]!=target: raise SystemExit(f'LTF_RUN_DATE_MISMATCH {run_at}')
+              key=f'LTF|{target}|{str(horizon).upper()}'
+
+              cur.execute('''INSERT INTO edge_recommendation_governance(
+                    recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,candidate_type,
+                    requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,research_fresh_at,fallback_reason)
+                  VALUES (%s,%s,'LTF',%s,%s,'EXCEPTION_CANONICAL',%s,%s,
+                    %s::date + time '08:55:59',%s::date + time '09:00:00',%s,%s)
+                  ON CONFLICT (recommendation_id) DO UPDATE SET
+                    canonical_key=EXCLUDED.canonical_key,ticker=EXCLUDED.ticker,target_trading_date=EXCLUDED.target_trading_date,
+                    forecast_horizon=EXCLUDED.forecast_horizon,candidate_type='EXCEPTION_CANONICAL',
+                    research_fresh_at=EXCLUDED.research_fresh_at,fallback_reason=EXCLUDED.fallback_reason''',
+                  (rid,key,target,horizon,run_at,completed_at or run_at,target,target,research_fresh_at,reason))
+
+              cur.execute('''INSERT INTO edge_canonical_selections(
+                    canonical_key,ticker,target_trading_date,forecast_horizon,selection_status,canonical_type,
+                    selected_recommendation_id,selected_at,selection_reason)
+                  VALUES (%s,'LTF',%s,%s,'SELECTED','EXCEPTION_CANONICAL',%s,%s,%s)
+                  ON CONFLICT (canonical_key) DO UPDATE SET
+                    ticker=EXCLUDED.ticker,target_trading_date=EXCLUDED.target_trading_date,
+                    forecast_horizon=EXCLUDED.forecast_horizon,selection_status='SELECTED',canonical_type='EXCEPTION_CANONICAL',
+                    selected_recommendation_id=EXCLUDED.selected_recommendation_id,selected_at=EXCLUDED.selected_at,
+                    selection_reason=EXCLUDED.selection_reason''',(key,target,horizon,rid,now,reason))
+
+              cur.execute('''UPDATE recommendation_lifecycle l SET include_in_master_metrics=false,updated_at=now()
+                              WHERE l.recommendation_id IN (
+                                SELECT g.recommendation_id FROM edge_recommendation_governance g
+                                 WHERE g.ticker='LTF' AND g.target_trading_date=%s AND g.forecast_horizon=%s)''',(target,horizon))
+              cur.execute('''UPDATE recommendation_lifecycle SET include_in_master_metrics=true,updated_at=now()
+                              WHERE recommendation_id=%s''',(rid,))
+
+              cur.execute('''SELECT s.selection_status,s.canonical_type,s.selected_recommendation_id,l.include_in_master_metrics,
+                                    g.candidate_type,rp.reference_price,s.selected_at,r.run_timestamp,r.definitive_forecast,
+                                    r.definitive_recommendation,r.forecast_horizon
+                               FROM edge_canonical_selections s
+                               JOIN recommendation_lifecycle l ON l.recommendation_id=s.selected_recommendation_id
+                               JOIN edge_recommendation_governance g ON g.recommendation_id=s.selected_recommendation_id
+                               JOIN recommendation_performance rp ON rp.recommendation_id=s.selected_recommendation_id
+                               JOIN recommendations r ON r.recommendation_id=s.selected_recommendation_id
+                              WHERE s.canonical_key=%s''',(key,))
+              v=cur.fetchone()
+              if not v or v[0]!='SELECTED' or v[1]!='EXCEPTION_CANONICAL' or v[2]!=rid or v[3] is not True or v[4]!='EXCEPTION_CANONICAL':
+                raise SystemExit(f'LTF_RECOVERY_CANONICAL_VERIFY_FAILED {v}')
+              out={'status':'LTF_28SEP_EXCEPTION_CANONICAL_CONFIRMED','target_trading_date':target,'canonical_key':key,
+                   'recommendation_id':rid,'research_bundle_id':bundle_id,'reference_price':float(v[5]) if v[5] is not None else None,
+                   'selection_status':v[0],'canonical_type':v[1],'include_in_master_metrics':v[3],
+                   'selected_at':v[6].isoformat() if hasattr(v[6],'isoformat') else str(v[6]),
+                   'run_timestamp':v[7].isoformat() if hasattr(v[7],'isoformat') else str(v[7]),
+                   'forecast':v[8],'recommendation':v[9],'forecast_horizon':v[10],'normal_preopen_completion':False}
+              print('LTF_28SEP_EXCEPTION_CANONICAL_CONFIRMED '+json.dumps(out,sort_keys=True,default=str))
+              open('ltf-canonical-20260928.json','w').write(json.dumps(out,indent=2,sort_keys=True,default=str))
+            conn.commit()
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ltf-canonical-recovery-20260928
+          path: |
+            ltf-publish-20260928.json
+            ltf-canonical-20260928.json
+          if-no-files-found: ignore
+          retention-days: 30

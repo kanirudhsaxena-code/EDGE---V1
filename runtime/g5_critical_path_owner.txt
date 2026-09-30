@@ -1,0 +1,2 @@
+Owner: MDOS critical path executor
+Outcome gate: exactly D,D+1,D+2,D+3,D+4 in production EDGE Stocks + exact governed Console/Chat presentation parity

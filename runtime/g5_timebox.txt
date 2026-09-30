@@ -1,0 +1,1 @@
+Timebox target: contract/calendar/schema today; engine payload + persistence/readback + renderer/parity next; fresh acceptance immediately after CI/regression. No unrelated parallel work until acceptance.

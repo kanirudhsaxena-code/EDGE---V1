@@ -1,0 +1,1 @@
+Acceptance target: fresh governed EDGE Stocks run with exactly five ordered D,D+1,D+2,D+3,D+4 rows persisted, rendered, captured in ChatGPT without reconstruction, LTF + CUPID regression green, no methodology drift.

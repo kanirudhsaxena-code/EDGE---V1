@@ -1,0 +1,1 @@
+Lane 1: current decision service remains API/canonical-evidence first, screenshot fallback, fail-closed on missing production D:D+4. Lane 2: only G5 production correction + parity until acceptance.

@@ -1,0 +1,1 @@
+Current step: calendar + contract committed; five-row engine payload/persistence wiring in progress.

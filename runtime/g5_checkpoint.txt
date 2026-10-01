@@ -1,0 +1,1 @@
+Checkpoint: calendar/contract guard committed; implementation continues.

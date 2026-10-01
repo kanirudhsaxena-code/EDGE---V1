@@ -1,0 +1,1 @@
+Scheduled automation alignment: MDOS G5 Critical Path Executor + Watchdog active; unrelated build automations paused until G5 acceptance.

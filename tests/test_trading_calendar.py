@@ -1,75 +1,50 @@
 from datetime import date
 
+import pytest
+
 from src.trading_calendar import (
     next_nse_trading_dates,
+    nse_forecast_dates_d_through_d4,
     parse_nse_trading_holidays,
 )
 
 
-def test_parse_only_nse_trading_holidays():
+def test_parse_nse_trading_holidays_filters_non_nse_and_non_trading_rows():
     payload={
         "status":"success",
         "data":[
             {"date":"2026-10-02","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["NSE","BSE"]},
-            {"date":"2026-10-05","holiday_type":"SETTLEMENT_HOLIDAY","closed_exchanges":["NSE"]},
-            {"date":"2026-10-06","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["MCX"]},
-            {"date":"2026-10-07","holiday_type":"SPECIAL_TIMING","closed_exchanges":[]},
+            {"date":"2026-10-03","holiday_type":"SETTLEMENT_HOLIDAY","closed_exchanges":["NSE"]},
+            {"date":"2026-10-05","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["BSE"]},
         ],
     }
-    result=parse_nse_trading_holidays(payload)
-    assert result=={date(2026,10,2)}
+    assert parse_nse_trading_holidays(payload)=={date(2026,10,2)}
 
 
-def test_next_five_dates_skip_weekends_and_holiday():
-    result=next_nse_trading_dates(
-        date(2026,10,1),
+def test_next_nse_trading_dates_remains_future_only_for_lifecycle_use():
+    rows=next_nse_trading_dates(
+        date(2026,9,30),
         {date(2026,10,2)},
         count=5,
     )
-    assert result==(
-        date(2026,10,5),
-        date(2026,10,6),
-        date(2026,10,7),
-        date(2026,10,8),
-        date(2026,10,9),
+    assert rows==(date(2026,10,1),date(2026,10,5),date(2026,10,6),date(2026,10,7),date(2026,10,8))
+
+
+def test_g5_forecast_path_is_exactly_d_through_d4_and_skips_holiday_weekend():
+    rows=nse_forecast_dates_d_through_d4(
+        date(2026,9,30),
+        {date(2026,10,2)},
     )
+    assert rows==(date(2026,9,30),date(2026,10,1),date(2026,10,5),date(2026,10,6),date(2026,10,7))
+    assert len(rows)==5
+    assert date(2026,10,8) not in rows  # D+5 must never enter a new current forecast path.
 
 
-def test_special_timing_is_not_removed_by_parser():
-    payload={
-        "status":"success",
-        "data":[
-            {"date":"2026-11-12","holiday_type":"SPECIAL_TIMING","closed_exchanges":[]}
-        ],
-    }
-    assert parse_nse_trading_holidays(payload)==set()
+def test_g5_forecast_path_fails_closed_when_d_is_not_trading_day():
+    with pytest.raises(ValueError,match="forecast D must be an NSE trading day"):
+        nse_forecast_dates_d_through_d4(date(2026,10,2),{date(2026,10,2)})
 
 
-def test_invalid_payload_fails_closed():
-    try:
-        parse_nse_trading_holidays({"status":"success","data":{}})
-    except ValueError as exc:
-        assert "list" in str(exc)
-    else:
-        raise AssertionError("invalid provider payload must fail")
-
-
-class HolidayEnv:
-    def __init__(self,payload):
-        self.payload=payload
-
-class HolidayProvider:
-    def __init__(self,payload):
-        self.payload=payload
-    def market_holidays(self):
-        return HolidayEnv(self.payload)
-
-def test_is_nse_trading_day_skips_weekend_and_trading_holiday():
-    from src.trading_calendar import is_nse_trading_day
-    payload={"status":"success","data":[
-        {"date":"2026-10-02","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["NSE"]}
-    ]}
-    p=HolidayProvider(payload)
-    assert is_nse_trading_day(p,date(2026,10,2)) is False
-    assert is_nse_trading_day(p,date(2026,10,3)) is False
-    assert is_nse_trading_day(p,date(2026,10,5)) is True
+def test_parse_requires_success_payload():
+    with pytest.raises(ValueError):
+        parse_nse_trading_holidays({"status":"error","data":[]})

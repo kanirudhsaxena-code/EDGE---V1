@@ -1,0 +1,1 @@
+Target UX after acceptance: user types EDGE LTF (or EDGE <ticker>) and receives governed production Console output with D:D+4 path, no extra prompting.

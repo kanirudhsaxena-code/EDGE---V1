@@ -1,0 +1,1 @@
+G5 implementation is active on branch g5-d0-d4-critical-path-20260930. See docs/G5_D0_D4_CRITICAL_PATH.md for acceptance checklist.

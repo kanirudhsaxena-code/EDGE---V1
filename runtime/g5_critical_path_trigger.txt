@@ -1,0 +1,3 @@
+G5 critical path implementation active
+Started: 2026-09-30
+Target: EDGE Stocks current forecast = D,D+1,D+2,D+3,D+4; no D+5; exact Console/Chat parity

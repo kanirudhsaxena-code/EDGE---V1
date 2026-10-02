@@ -1,0 +1,82 @@
+name: G5 Production Candidate Validation Request
+
+on:
+  push:
+    branches:
+      - 'g5-validation-*'
+    paths:
+      - 'validation-requests/*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: .
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Resolve governed validation request
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^validation-requests/[^/]+\.json$' | head -1 || true)"
+          test -n "$FILE"
+          test -f "$FILE"
+          python - "$FILE" <<'PY'
+          import json, os, re, sys
+          path=sys.argv[1]
+          data=json.load(open(path,encoding='utf-8'))
+          assert isinstance(data,dict), data
+          assert data.get('validation_only') is True, data
+          ticker=str(data.get('ticker') or '').strip().upper()
+          assert re.fullmatch(r'[A-Z0-9._&-]{1,20}',ticker), ticker
+          holding=str(data.get('holding_state') or 'UNKNOWN').strip().upper()
+          assert holding in {'UNKNOWN','HOLDS','NO_HOLDING'}, holding
+          bundle=str(data.get('research_bundle_id') or '').strip()
+          assert bundle, 'exact governed research_bundle_id is required for G5 validation request'
+          assert re.fullmatch(r'[A-Za-z0-9._:-]{3,160}',bundle), bundle
+          env={
+              'EDGE_TICKER':ticker,
+              'EDGE_HOLDING_STATE':holding,
+              'EDGE_RESEARCH_BUNDLE_ID':bundle,
+              'G5_VALIDATION_REQUEST_FILE':path,
+          }
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as out:
+              for key,value in env.items():
+                  out.write(f'{key}={value}\n')
+          print(json.dumps({
+              'ticker':ticker,
+              'holding_state':holding,
+              'research_bundle_id':bundle,
+              'validation_only':True,
+              'request_file':path,
+          },sort_keys=True))
+          PY
+
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+
+      - name: Run non-publishing production candidate
+        run: |
+          set -o pipefail
+          python -m src.production_candidate_cli | tee edge-production-candidate.json
+
+      - name: Upload bounded validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g5-production-candidate-validation
+          path: |
+            edge-production-candidate.json
+            edge-production-candidate-report.md
+          if-no-files-found: ignore
+          retention-days: 14

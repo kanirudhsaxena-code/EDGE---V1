@@ -6,16 +6,43 @@ from src.g5_issuance_inputs import (
     G5InputError,
     G5IssuanceInputs,
     compute_atr14,
+    candles_from_payload,
     event_gap_risk_state,
     extract_profile_sector,
     lineage_from_source,
     liquidity_state_from_ratio,
+    liquidity_ratio,
     producer_lineage_maps,
     regime_from_candles,
     regime_from_price_structure,
     sector_benchmark_name,
     stock_daily_payload,
 )
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_liquidity_inputs_fail_closed(bad):
+    with pytest.raises(G5InputError):
+        liquidity_state_from_ratio(bad)
+    rows = _trend_candles(25)
+    rows[-1][5] = bad
+    with pytest.raises(G5InputError):
+        liquidity_ratio(rows)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0])
+def test_invalid_atr_ohlc_fails_closed(bad):
+    rows = _trend_candles(15)
+    rows[-1][2] = bad
+    with pytest.raises(G5InputError):
+        compute_atr14(rows)
+
+
+def test_malformed_candle_is_rejected_instead_of_silently_dropped():
+    rows = _trend_candles(30)
+    rows.insert(10, ["2026-01-11"])
+    with pytest.raises(G5InputError, match="malformed"):
+        candles_from_payload({"data": {"candles": rows}})
 
 
 def _trend_candles(n=60, start=100.0, step=1.0, volume=1000.0):

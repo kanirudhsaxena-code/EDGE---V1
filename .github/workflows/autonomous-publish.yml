@@ -48,6 +48,50 @@ jobs:
           python-version: "3.12"
       - name: Install PostgreSQL client
         run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Verify required G5 forecast-path schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          import psycopg
+
+          required_tables={
+              'edge_stock_forecast_paths',
+              'edge_stock_forecast_path_rows',
+          }
+          conn=psycopg.connect(os.environ['DATABASE_URL'])
+          try:
+              cur=conn.cursor()
+              cur.execute(
+                  """
+                  select c.relname
+                  from pg_class c
+                  join pg_namespace n on n.oid=c.relnamespace
+                  where n.nspname=current_schema()
+                    and c.relname = any(%s)
+                    and c.relkind='r'
+                  """,
+                  (list(required_tables),),
+              )
+              found={str(row[0]) for row in cur.fetchall()}
+              if found != required_tables:
+                  print(json.dumps({
+                      'status':'BLOCKED_CONFIGURATION',
+                      'diagnostic_code':'G5_SCHEMA_NOT_READY',
+                      'required_tables':sorted(required_tables),
+                      'found_tables':sorted(found),
+                      'publishing_enabled':False,
+                      'trading_enabled':False,
+                  },sort_keys=True))
+                  sys.exit(4)
+              print(json.dumps({
+                  'G5_SCHEMA_READINESS':'PASS',
+                  'tables':sorted(found),
+              },sort_keys=True))
+          finally:
+              conn.close()
+          PY
       - name: Run governed autonomous publisher
         run: |
           set -o pipefail

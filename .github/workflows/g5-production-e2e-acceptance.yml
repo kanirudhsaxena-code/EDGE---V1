@@ -71,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/007_edge_stock_forecast_path.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/008_edge_stock_forecast_path_float_precision.sql
           python - <<'PY'
           import json, os
           import psycopg
@@ -82,6 +83,14 @@ jobs:
           required_triggers={
               'trg_edge_stock_forecast_paths_immutable',
               'trg_edge_stock_forecast_path_rows_immutable',
+          }
+          required_float_columns={
+              'bull_probability',
+              'base_probability',
+              'bear_probability',
+              'expected_centre',
+              'outer_expected_zone_low',
+              'outer_expected_zone_high',
           }
 
           conn=psycopg.connect(os.environ['DATABASE_URL'])
@@ -116,11 +125,26 @@ jobs:
               found_triggers={str(row[0]) for row in cur.fetchall()}
               assert required_triggers <= found_triggers, (found_triggers, required_triggers)
 
+              cur.execute(
+                  """
+                  select column_name,data_type
+                  from information_schema.columns
+                  where table_schema=current_schema()
+                    and table_name='edge_stock_forecast_path_rows'
+                    and column_name = any(%s)
+                  """,
+                  (list(required_float_columns),),
+              )
+              found_types={str(name):str(dtype) for name,dtype in cur.fetchall()}
+              assert set(found_types)==required_float_columns, (found_types, required_float_columns)
+              assert all(dtype=='double precision' for dtype in found_types.values()), found_types
+
               proof={
                   'status':'PASS',
-                  'schema_contract':'G5_EDGE_STOCK_FORECAST_PATH_V1',
+                  'schema_contract':'G5_EDGE_STOCK_FORECAST_PATH_V1_1',
                   'tables':sorted(found_tables),
                   'immutability_triggers':sorted(required_triggers),
+                  'float_storage_types':found_types,
               }
               json.dump(
                   proof,

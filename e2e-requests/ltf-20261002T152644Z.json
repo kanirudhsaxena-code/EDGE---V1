@@ -1,0 +1,10 @@
+{
+  "acceptance_scope": "G5",
+  "e2e_publish": true,
+  "ticker": "LTF",
+  "holding_state": "UNKNOWN",
+  "research_bundle_id": "edge-research-LTF-b535f1fbcb8b359731e1481de4eb6b1fda510ac64128ea630b54139245e88798",
+  "source_main_sha": "10b51f0c090209e41023e486722a6795f5545b52",
+  "requested_at": "2026-10-02T15:26:44.354Z",
+  "trading_enabled": false
+}

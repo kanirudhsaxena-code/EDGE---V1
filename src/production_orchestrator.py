@@ -16,7 +16,7 @@ No broker order/trading action exists here.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from zoneinfo import ZoneInfo
 from typing import Any, Mapping, Optional
@@ -27,7 +27,27 @@ from src.autonomous_interpreter import ConservativeAutonomousInterpreter
 from src.checkpoint_reconciler import reconcile_overdue_checkpoints
 from src.evidence_persistence import canonical_evidence_records
 from src.final_execution import reconcile_with_structure
-from src.market_providers import UpstoxReadOnlyStockProvider
+from src.forecast_path import ForecastPathWrite
+from src.g5_issuance_inputs import (
+    G5InputError,
+    G5IssuanceInputs,
+    G5_SECTOR_REGISTRY_VERSION,
+    candles_from_payload,
+    combined_lineage,
+    compute_atr14,
+    event_gap_risk_state,
+    extract_profile_sector,
+    latest_candle_as_of,
+    lineage_from_source,
+    liquidity_state_from_candles,
+    producer_lineage_maps,
+    regime_from_candles,
+    regime_from_price_structure,
+    sector_benchmark_name,
+    stock_daily_payload,
+)
+from src.horizon_path_shadow import build_g5_stock_dd4_forecast_path
+from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider
 from src.persistence import AtomicNeonPersistenceAdapter, CanonicalRecommendationWrite
 from src.pre_run_gate import evaluate_pre_run_gate
 from src.production_bundle import ProductionMetadata, build_canonical_bundle
@@ -35,7 +55,7 @@ from src.release_gate import ReleaseApproval, evaluate_release_gate
 from src.report import render_standard_edge_report
 from src.shadow_pipeline import compute_shadow_recommendation
 from src.state_recovery import recover_pre_run_state
-from src.trading_calendar import fetch_next_five_nse_trading_dates
+from src.trading_calendar import fetch_g5_five_nse_trading_dates, fetch_next_five_nse_trading_dates
 from src.upstox_research import UpstoxReadOnlyResearchProvider
 from src.zone_engine import MarketStructureContext
 from src.research_bundle import (
@@ -59,6 +79,7 @@ class ProductionCandidateResult:
     canonical_bundle: Optional[CanonicalRecommendationWrite]
     report_markdown: Optional[str]
     persistence_id: Optional[str]
+    forecast_path: Optional[ForecastPathWrite] = None
 
 
 def _event_level(override: Optional[str]) -> str:
@@ -122,6 +143,155 @@ def _rebase_structure_context(
         resistances=resistances,
     )
 
+
+
+def _verified_component_raw_score(interpretation, component: str) -> Optional[int]:
+    target = component.strip().upper()
+    for row in interpretation.component_scores:
+        if row.component.strip().upper() != target:
+            continue
+        if not row.verified or row.raw_score is None:
+            return None
+        return int(row.raw_score)
+    return None
+
+
+def _stock_quote_source_ref(
+    payloads: Mapping[str, Mapping[str, Any]],
+    instrument_key: str,
+) -> str:
+    encoded = instrument_key.replace("|", "%7C")
+    matches = [
+        source_ref
+        for source_ref in payloads
+        if "/v3/market-quote/quotes" in source_ref
+        and (instrument_key in source_ref or encoded in source_ref)
+    ]
+    if len(matches) != 1:
+        raise G5InputError("G5 requires exactly one attributable stock quote source")
+    return matches[0]
+
+
+def _build_g5_issuance_inputs(
+    *,
+    acquired,
+    interpretation,
+    shadow,
+    market: UpstoxReadOnlyStockProvider,
+    governed_research,
+    run_at: datetime,
+    p0: float,
+) -> G5IssuanceInputs:
+    local_day = run_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+    stock_candles, stock_daily_ref = stock_daily_payload(
+        acquired.payloads,
+        instrument_key=acquired.instrument_key,
+    )
+    atr14 = compute_atr14(stock_candles)
+    liquidity_state = liquidity_state_from_candles(stock_candles)
+
+    stock_score = _verified_component_raw_score(interpretation, "PRICE_STRUCTURE")
+    if stock_score is None:
+        raise G5InputError("G5 stock Price Structure is not verified")
+    stock_regime = regime_from_price_structure(stock_score)
+
+    sector_name, profile_ref = extract_profile_sector(acquired.payloads)
+    sector_benchmark = sector_benchmark_name(sector_name)
+    sector_key, resolved_sector_name = market.resolve_nse_index(sector_benchmark)
+    if resolved_sector_name.casefold() != sector_benchmark.casefold():
+        raise G5InputError("G5 resolved sector benchmark identity changed unexpectedly")
+    sector_env = market.daily(
+        sector_key,
+        local_day - timedelta(days=180),
+        local_day,
+    )
+    sector_candles = candles_from_payload(sector_env.payload)
+    sector_regime = regime_from_candles(sector_candles)
+
+    event_score = _verified_component_raw_score(interpretation, "EVENT_SHOCK")
+    event_state = event_gap_risk_state(
+        event_shock_raw_score=event_score,
+        active_override=shadow.event_override,
+    )
+
+    g5_calendar = fetch_g5_five_nse_trading_dates(
+        market,
+        start_on=local_day,
+    )
+    quote_ref = _stock_quote_source_ref(acquired.payloads, acquired.instrument_key)
+    stock_as_of = latest_candle_as_of(stock_candles)
+    sector_as_of = latest_candle_as_of(sector_candles)
+    event_refs = tuple(
+        dict.fromkeys(
+            evidence.source_ref
+            for evidence in acquired.evidence
+            if evidence.category == "EVENT_SHOCK"
+            and evidence.verified
+            and evidence.source_ref.strip()
+        )
+    )
+    if not event_refs:
+        raise G5InputError("G5 Event-Shock lineage is unavailable")
+
+    lineage = {
+        "p0": lineage_from_source(
+            source_ref=quote_ref,
+            provider="UPSTOX",
+            as_of=run_at.isoformat(),
+            acquired_at=run_at,
+        ),
+        "atr14": lineage_from_source(
+            source_ref=stock_daily_ref,
+            provider="UPSTOX",
+            as_of=stock_as_of,
+            acquired_at=run_at,
+        ),
+        "stock_regime": lineage_from_source(
+            source_ref=stock_daily_ref,
+            provider="UPSTOX",
+            as_of=stock_as_of,
+            acquired_at=run_at,
+        ),
+        "sector_regime": combined_lineage(
+            source_refs=(profile_ref, sector_env.source_ref),
+            provider="UPSTOX",
+            as_of=sector_as_of,
+            acquired_at=sector_env.received_at,
+            derivation_version=G5_SECTOR_REGISTRY_VERSION,
+        ),
+        "liquidity": lineage_from_source(
+            source_ref=stock_daily_ref,
+            provider="UPSTOX",
+            as_of=stock_as_of,
+            acquired_at=run_at,
+        ),
+        "event_gap_risk": combined_lineage(
+            source_refs=event_refs,
+            provider="GOVERNED_EDGE_EVIDENCE",
+            as_of=governed_research.research_fresh_at.isoformat(),
+            acquired_at=run_at,
+        ),
+        "calendar": lineage_from_source(
+            source_ref=g5_calendar.source_ref,
+            provider="UPSTOX",
+            as_of=local_day.isoformat(),
+            acquired_at=g5_calendar.acquired_at,
+            derivation_version=g5_calendar.calendar_version,
+        ),
+    }
+    return G5IssuanceInputs(
+        p0=float(p0),
+        atr14=atr14,
+        stock_regime=stock_regime,
+        sector_regime=sector_regime,
+        liquidity_state=liquidity_state,
+        event_gap_risk_state=event_state,
+        target_trading_dates=g5_calendar.dates,
+        calendar_version=g5_calendar.calendar_version,
+        lineage=lineage,
+        sector_name=sector_name,
+        sector_benchmark=sector_benchmark,
+    )
 
 def build_production_candidate(
     *,
@@ -258,9 +428,44 @@ def build_production_candidate(
     canonical=build_canonical_bundle(shadow,metadata)
     report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)
 
+    try:
+        g5_inputs=_build_g5_issuance_inputs(
+            acquired=acquired,
+            interpretation=interpretation,
+            shadow=shadow,
+            market=market,
+            governed_research=governed_research,
+            run_at=run_at,
+            p0=live_reference_price,
+        )
+        source_ids,source_timestamps,source_hashes=producer_lineage_maps(g5_inputs)
+        forecast_path=build_g5_stock_dd4_forecast_path(
+            recommendation_id=canonical.recommendation_id,
+            source_run_id=canonical.recommendation_id,
+            issued_at=run_at,
+            p0=g5_inputs.p0,
+            atr14=g5_inputs.atr14,
+            stock_regime=g5_inputs.stock_regime,
+            sector_regime=g5_inputs.sector_regime,
+            liquidity_state=g5_inputs.liquidity_state,
+            event_gap_risk_state=g5_inputs.event_gap_risk_state,
+            target_trading_dates=g5_inputs.target_trading_dates,
+            calendar_version=g5_inputs.calendar_version,
+            source_ids=source_ids,
+            source_timestamps=source_timestamps,
+            source_hashes=source_hashes,
+            canonical_p0_verified=True,
+            atr_history_sufficient=True,
+            freshness_verified=True,
+        )
+    except (G5InputError,AcquisitionError,ValueError) as exc:
+        return ProductionCandidateResult(
+            "BLOCKED_G5_INPUTS",(str(exc),),canonical,report,None,None
+        )
+
     if not publish:
         return ProductionCandidateResult(
-            "PRODUCTION_CANDIDATE_READY",(),canonical,report,None
+            "PRODUCTION_CANDIDATE_READY",(),canonical,report,None,forecast_path
         )
 
     approval=release_approval or ReleaseApproval()
@@ -269,14 +474,14 @@ def build_production_candidate(
     )
     if not release.ready:
         return ProductionCandidateResult(
-            "BLOCKED_RELEASE_GOVERNANCE",release.blockers,canonical,report,None
+            "BLOCKED_RELEASE_GOVERNANCE",release.blockers,canonical,report,None,forecast_path
         )
 
     evidence_rows=canonical_evidence_records(acquired.evidence)
     adapter=AtomicNeonPersistenceAdapter(
-        lambda: connection,evidence_records=evidence_rows
+        lambda: connection,evidence_records=evidence_rows,forecast_path=forecast_path
     )
     persistence_id=adapter.persist(canonical)
     return ProductionCandidateResult(
-        "PUBLISHED",(),canonical,report,persistence_id
+        "PUBLISHED",(),canonical,report,persistence_id,forecast_path
     )

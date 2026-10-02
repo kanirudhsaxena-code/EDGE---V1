@@ -63,7 +63,7 @@ _SECTOR_INDEX_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("information technology", "software", "it services"), "Nifty IT"),
     (("pharmaceutical", "pharma", "healthcare"), "Nifty Healthcare"),
     (("automobile", "auto"), "Nifty Auto"),
-    (("fast moving consumer goods", "fmcg"), "Nifty FMCG"),
+    (("fast moving consumer goods", "fmcg", "household products"), "Nifty FMCG"),
     (("metal", "mining"), "Nifty Metal"),
     (("realty", "real estate"), "Nifty Realty"),
     (("media", "entertainment"), "Nifty Media"),

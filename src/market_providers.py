@@ -26,6 +26,17 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 UPSTOX_BASE = "https://api.upstox.com"
 NIFTY_50 = "NSE_INDEX|Nifty 50"
 
+# Canonical EDGE benchmark name -> exact attributable Upstox aliases.
+# These are identity aliases only; they do not change the governed NSE benchmark.
+GOVERNED_NSE_INDEX_PROVIDER_ALIASES: Mapping[str, Mapping[str, tuple[str, ...]]] = {
+    "Nifty Financial Services": {
+        "queries": ("Nifty Financial Services", "Nifty Fin Service", "FINNIFTY"),
+        "names": ("Nifty Financial Services", "Nifty Fin Service"),
+        "trading_symbols": ("FINNIFTY",),
+        "instrument_keys": ("NSE_INDEX|Nifty Fin Service",),
+    },
+}
+
 
 class AcquisitionError(RuntimeError):
     pass
@@ -255,37 +266,76 @@ class UpstoxReadOnlyStockProvider:
         return next(iter(keys)), str(row.get("name") or symbol)
 
     def resolve_nse_index(self, index_name: str) -> tuple[str, str]:
-        """Resolve one exact governed NSE index by name; never guess/fallback."""
+        """Resolve one exact governed NSE index; provider aliases are explicit only."""
         name = str(index_name or "").strip()
         if not name:
             raise AcquisitionError("INSTRUMENT_NOT_FOUND")
-        env = self._get(
-            "/v2/instruments/search",
-            {
-                "query": name,
-                "exchanges": "NSE",
-                "segments": "INDEX",
-                "page_number": "1",
-                "records": "30",
-            },
-        )
-        rows = env.payload.get("data")
-        if not isinstance(rows, list):
-            raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
-        exact = [
-            row for row in rows
-            if isinstance(row, dict)
-            and str(row.get("segment", "")).upper() == "NSE_INDEX"
-            and str(row.get("instrument_type", "")).upper() == "INDEX"
-            and str(row.get("name", "")).strip().casefold() == name.casefold()
-            and row.get("instrument_key")
-        ]
-        keys = {str(row["instrument_key"]) for row in exact}
-        if not keys:
+
+        alias = GOVERNED_NSE_INDEX_PROVIDER_ALIASES.get(name, {})
+        queries = tuple(dict.fromkeys((name, *alias.get("queries", ()))))
+        accepted_names = {
+            str(value).strip().casefold()
+            for value in (name, *alias.get("names", ()))
+            if str(value).strip()
+        }
+        accepted_symbols = {
+            str(value).strip().upper()
+            for value in alias.get("trading_symbols", ())
+            if str(value).strip()
+        }
+        accepted_keys = {
+            str(value).strip()
+            for value in alias.get("instrument_keys", ())
+            if str(value).strip()
+        }
+
+        matches: dict[str, Mapping[str, Any]] = {}
+        for query in queries:
+            env = self._get(
+                "/v2/instruments/search",
+                {
+                    "query": query,
+                    "exchanges": "NSE",
+                    "segments": "INDEX",
+                    "page_number": "1",
+                    "records": "30",
+                },
+            )
+            rows = env.payload.get("data")
+            if not isinstance(rows, list):
+                raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("segment", "")).upper() != "NSE_INDEX":
+                    continue
+                if str(row.get("instrument_type", "")).upper() != "INDEX":
+                    continue
+                key = str(row.get("instrument_key", "")).strip()
+                if not key:
+                    continue
+                row_name = str(row.get("name", "")).strip().casefold()
+                symbol = str(row.get("trading_symbol", "")).strip().upper()
+                identity_match = (
+                    row_name in accepted_names
+                    or (accepted_symbols and symbol in accepted_symbols)
+                    or (accepted_keys and key in accepted_keys)
+                )
+                if identity_match:
+                    matches[key] = row
+            if matches:
+                break
+
+        if not matches:
             raise AcquisitionError("INSTRUMENT_NOT_FOUND")
-        if len(keys) != 1:
+        if len(matches) != 1:
             raise AcquisitionError("AMBIGUOUS_INSTRUMENT")
-        return next(iter(keys)), str(exact[0].get("name") or name)
+        key = next(iter(matches))
+        if accepted_keys and key not in accepted_keys:
+            raise AcquisitionError("INSTRUMENT_NOT_FOUND")
+        # Return the canonical governed benchmark name; provider spelling remains
+        # attributable through the exact instrument key used for market evidence.
+        return key, name
 
     def quote(self, instrument_key: str) -> ProviderEnvelope:
         return self._get("/v3/market-quote/quotes", {"instrument_key": instrument_key})

@@ -254,6 +254,39 @@ class UpstoxReadOnlyStockProvider:
         row = exact[0]
         return next(iter(keys)), str(row.get("name") or symbol)
 
+    def resolve_nse_index(self, index_name: str) -> tuple[str, str]:
+        """Resolve one exact governed NSE index by name; never guess/fallback."""
+        name = str(index_name or "").strip()
+        if not name:
+            raise AcquisitionError("INSTRUMENT_NOT_FOUND")
+        env = self._get(
+            "/v2/instruments/search",
+            {
+                "query": name,
+                "exchanges": "NSE",
+                "segments": "INDEX",
+                "page_number": "1",
+                "records": "30",
+            },
+        )
+        rows = env.payload.get("data")
+        if not isinstance(rows, list):
+            raise AcquisitionError("RESPONSE_SCHEMA_INVALID")
+        exact = [
+            row for row in rows
+            if isinstance(row, dict)
+            and str(row.get("segment", "")).upper() == "NSE_INDEX"
+            and str(row.get("instrument_type", "")).upper() == "INDEX"
+            and str(row.get("name", "")).strip().casefold() == name.casefold()
+            and row.get("instrument_key")
+        ]
+        keys = {str(row["instrument_key"]) for row in exact}
+        if not keys:
+            raise AcquisitionError("INSTRUMENT_NOT_FOUND")
+        if len(keys) != 1:
+            raise AcquisitionError("AMBIGUOUS_INSTRUMENT")
+        return next(iter(keys)), str(exact[0].get("name") or name)
+
     def quote(self, instrument_key: str) -> ProviderEnvelope:
         return self._get("/v3/market-quote/quotes", {"instrument_key": instrument_key})
 

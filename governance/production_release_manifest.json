@@ -20,16 +20,77 @@
   "binding_status": "BOUND",
   "governance_note": "V1.3 supersedes V1.2 for new standard EDGE Stocks outputs without changing the EDGE V1 analytical core.",
   "g5_stock_dd4_release": {
-    "status": "ACCEPTED",
-    "accepted_at": "2026-10-02T17:27:27Z",
+    "promotion_status": "PROMOTED_AFTER_GOVERNED_PROOF",
+    "scope": "EDGE_STOCKS_D_THROUGH_D_PLUS_4_FORECAST_PATH",
     "methodology_version": "G5_STOCK_DD4_V1.0",
-    "forecast_path_contract": "EDGE_STOCK_FORECAST_PATH_V1",
-    "acceptance_gate_set": "G5-01..G5-27",
-    "acceptance_evidence": "governance/g5_acceptance_evidence_20261002.json",
-    "production_recommendation_id": "EDGE-LTF-20261002-171436-AUTO",
-    "forecast_path_hash": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
-    "console_chat_parity_run_id": "37040793516",
-    "production_e2e_run_id": "37039338271",
-    "methodology_status": "ADDITIVE_FROZEN_CORE_UNCHANGED"
+    "frozen_core_methodology_changed": false,
+    "forecast_sessions": [
+      "D",
+      "D+1",
+      "D+2",
+      "D+3",
+      "D+4"
+    ],
+    "d_plus_5_current_forecast_prohibited": true,
+    "governance_sources": [
+      {
+        "drive_file_id": "1QkdyzEFrQZQnyuxipYQvd5NkuWc3hq_sYvY7Bqg5SoE",
+        "role": "PRODUCTION_BACKBONE_G5_INPUT_MAPPING"
+      },
+      {
+        "drive_file_id": "1lwqZEhZVCWOAH2mZ-YIDyGqTk6v7h112-vnogm3kyz4",
+        "role": "VNEXT_G5_IMPLEMENTATION_BINDING"
+      },
+      {
+        "drive_file_id": "1c3NbYZCIfi5LOuKBGxQDePuTdInnlJ45eV62Zjh3JPE",
+        "role": "G5_EVIDENCE_DATA_BINDING"
+      },
+      {
+        "drive_file_id": "13i-KF2ylid2AF3ZTfwMe932GUDMmIL4z",
+        "role": "FROZEN_EDGE_V1_CORE"
+      }
+    ],
+    "runtime_baseline": {
+      "engine_main_sha": "8038c0431a21d9db9bf3881c63350a460607c46a",
+      "console_main_sha": "5e18caab7ed03522e84e3e737d3d2f150b4768ea"
+    },
+    "governed_research": {
+      "LTF": "edge-research-LTF-b535f1fbcb8b359731e1481de4eb6b1fda510ac64128ea630b54139245e88798",
+      "CUPID": "edge-research-CUPID-a110e91260766e5e6b168b258e76a38073fd1b807e787b7c47645207afa1607e"
+    },
+    "acceptance_evidence": {
+      "ltf_candidate_run_id": 37026336185,
+      "cupid_candidate_run_id": 37026342821,
+      "ltf_e2e_run_id": 37039338271,
+      "cupid_e2e_run_id": 37039520276,
+      "ltf_recommendation_id": "EDGE-LTF-20261002-171436-AUTO",
+      "cupid_recommendation_id": "EDGE-CUPID-20261002-171606-AUTO",
+      "ltf_forecast_path_hash": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
+      "cupid_forecast_path_hash": "e40cf232779f5222db1d8679a79ed0e1cb2aeb360a01058c4b83708e92ba437f",
+      "ltf_console_chat_parity_run_id": 37040813577,
+      "cupid_console_chat_parity_run_id": 37040944200,
+      "missing_evidence_run_id": 37041477107,
+      "missing_evidence_diagnostic": "FRESH_GOVERNED_RESEARCH_REQUIRED",
+      "engine_main_ci_run_id": 37039263958,
+      "console_main_ci_run_id": 37040564517,
+      "console_deploy_run_id": 37040564526,
+      "console_smoke_run_id": 37040564633
+    },
+    "invariants": {
+      "exact_five_ordered_sessions": true,
+      "complete_probability_vector_each_session": true,
+      "stock_specific_zones_and_lineage": true,
+      "no_trade_retains_forecast_path": true,
+      "atomic_immutable_persistence": true,
+      "exact_run_console_readback": true,
+      "exact_chat_parity_no_reconstruction": true,
+      "missing_evidence_fails_closed": true,
+      "production_recommendation_logic_unchanged": true,
+      "market_trust_unchanged": true,
+      "bot_unchanged": true,
+      "canonical_selection_unchanged": true,
+      "official_efficacy_population_unchanged": true,
+      "execution_methodology_unchanged": true
+    }
   }
 }

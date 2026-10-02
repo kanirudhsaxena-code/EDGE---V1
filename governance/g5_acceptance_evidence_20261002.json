@@ -1,0 +1,132 @@
+{
+  "schema_version": "G5_ACCEPTANCE_EVIDENCE_V1",
+  "gate_set": "G5-01..G5-27",
+  "acceptance_status": "ACCEPTED",
+  "accepted_at": "2026-10-02T17:27:27Z",
+  "methodology_version": "G5_STOCK_DD4_V1.0",
+  "production_recommendation_id": "EDGE-LTF-20261002-171436-AUTO",
+  "forecast_path_hash": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
+  "research_bundles": {
+    "LTF": "edge-research-LTF-b535f1fbcb8b359731e1481de4eb6b1fda510ac64128ea630b54139245e88798",
+    "CUPID": "edge-research-CUPID-a110e91260766e5e6b168b258e76a38073fd1b807e787b7c47645207afa1607e"
+  },
+  "decisive_runs": {
+    "ltf_candidate": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37026336185",
+    "cupid_candidate": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37026342821",
+    "production_e2e": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039338271",
+    "console_chat_parity": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040793516",
+    "engine_main_ci": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039263958",
+    "console_main_ci": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564517",
+    "console_production_smoke": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564633"
+  },
+  "gates": {
+    "G5-01": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 exact readback labels D,D+1,D+2,D+3,D+4"
+    },
+    "G5-02": {
+      "status": "PASS",
+      "evidence": "G5_STOCK_DD4_V1.0 additive implementation; frozen EDGE_V1 core regression CI 37039263958 green"
+    },
+    "G5-03": {
+      "status": "PASS",
+      "evidence": "Console/Chat parity run 37040793516 validates four canonical EDGE sections"
+    },
+    "G5-04": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 governed NSE path includes D plus four subsequent sessions"
+    },
+    "G5-05": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 explicitly rejects D+5 and readback contains no D+5"
+    },
+    "G5-06": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 published exactly five governed stock-specific rows"
+    },
+    "G5-07": {
+      "status": "PASS",
+      "evidence": "Parity run 37040793516 validates each row date, direction, zone and Bull/Base/Bear probabilities"
+    },
+    "G5-08": {
+      "status": "PASS",
+      "evidence": "Console read model consumes immutable persisted rows; parity compares source to DOM without synthesis"
+    },
+    "G5-09": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 atomic five-row persistence PASS"
+    },
+    "G5-10": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 exact five-row unchanged readback PASS; hash 6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f"
+    },
+    "G5-11": {
+      "status": "PASS",
+      "evidence": "E2E run 37039338271 verifies methodology/producer versions and source_ids/source_timestamps/source_hashes lineage"
+    },
+    "G5-12": {
+      "status": "PASS",
+      "evidence": "EDGE_STOCK_FORECAST_PATH_V1 strict exact-five schema; Console CI 37040564517 green"
+    },
+    "G5-13": {
+      "status": "PASS",
+      "evidence": "Live parity run 37040793516 renders CANONICAL FORECAST PATH with EXACTLY 5 rows"
+    },
+    "G5-14": {
+      "status": "PASS",
+      "evidence": "Strict path/order/probability validation and fail-closed renderer/read model covered by Console CI 37040564517"
+    },
+    "G5-15": {
+      "status": "PASS",
+      "evidence": "Live parity presentation run 37040793516 reports CURRENT STOCK OUTCOME · D:D+4 and no D+5 row"
+    },
+    "G5-16": {
+      "status": "PASS",
+      "evidence": "Chat capture run 37040793516 uses LIVE_EDGE_CONSOLE source"
+    },
+    "G5-17": {
+      "status": "PASS",
+      "evidence": "Chat parity run 37040793516 compares all five labels, dates, directions, zones and probability vectors"
+    },
+    "G5-18": {
+      "status": "PASS",
+      "evidence": "Chat capture consumes Console DOM and governed report source; no Chat row reconstruction"
+    },
+    "G5-19": {
+      "status": "PASS",
+      "evidence": "LTF production candidate run 37026336185 READY plus governed production E2E 37039338271 PASS"
+    },
+    "G5-20": {
+      "status": "PASS",
+      "evidence": "CUPID production candidate run 37026342821 READY after governed sector-resolution regression"
+    },
+    "G5-21": {
+      "status": "PASS",
+      "evidence": "Real fail-closed candidate runs 37019725385 and 37020394863 returned FRESH_GOVERNED_RESEARCH_REQUIRED; missing-bundle regression remains green"
+    },
+    "G5-22": {
+      "status": "PASS",
+      "evidence": "Engine main CI 37039263958, Console main CI 37040564517, Production Smoke 37040564633 and Chat Presentation Lock 37040432749 green"
+    },
+    "G5-23": {
+      "status": "PASS",
+      "evidence": "Fresh governed production E2E run 37039338271 published LTF recommendation EDGE-LTF-20261002-171436-AUTO"
+    },
+    "G5-24": {
+      "status": "PASS",
+      "evidence": "Live Console readback/capture run 37040793516 succeeded against exact E2E recommendation"
+    },
+    "G5-25": {
+      "status": "PASS",
+      "evidence": "Run 37040793516 emitted CHAT_FIVE_SESSION_PARITY=TRUE and CHAT_PRESENTATION_VALID=TRUE"
+    },
+    "G5-26": {
+      "status": "PASS",
+      "evidence": "This governed manifest promotion occurs only after G5-01 through G5-25 proof"
+    },
+    "G5-27": {
+      "status": "PASS",
+      "evidence": "Acceptance is promoted only by this final manifest after every preceding gate is PASS"
+    }
+  }
+}

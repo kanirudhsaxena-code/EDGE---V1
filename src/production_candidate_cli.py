@@ -15,6 +15,9 @@ from src.production_orchestrator import (
 )
 
 
+from src.research_bundle import latest_fresh_governed_research_bundle
+
+
 def main() -> int:
     ticker=os.getenv("EDGE_TICKER","LTF").strip().upper()
     token=os.getenv("UPSTOX_ANALYTICS_TOKEN","")
@@ -50,10 +53,23 @@ def main() -> int:
 
     conn=psycopg.connect(db_url)
     try:
+        run_at=datetime.now(timezone.utc)
+        if not research_bundle_id:
+            research=latest_fresh_governed_research_bundle(conn,ticker=ticker,run_at=run_at)
+            if research is None:
+                print(json.dumps({
+                    "status":"BLOCKED_RESEARCH_BUNDLE",
+                    "diagnostic_code":"FRESH_GOVERNED_RESEARCH_REQUIRED",
+                    "ticker":ticker,
+                    "publishing_enabled":False,
+                    "trading_enabled":False,
+                },sort_keys=True))
+                return 3
+            research_bundle_id=research.bundle_id
         result=build_production_candidate(
             connection=conn,
             ticker=ticker,
-            run_at=datetime.now(timezone.utc),
+            run_at=run_at,
             upstox_token=token,
             holding_state=holding,
             publish=False,
@@ -63,6 +79,7 @@ def main() -> int:
             "status":result.status,
             "ticker":ticker,
             "holding_state":holding.value,
+            "research_bundle_id":research_bundle_id,
             "blockers":list(result.blockers),
             "publishing_enabled":False,
             "trading_enabled":False,

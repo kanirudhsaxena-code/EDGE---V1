@@ -1,0 +1,5 @@
+{
+  "expect_missing_research": true,
+  "ticker": "G5MISSING",
+  "holding_state": "UNKNOWN"
+}

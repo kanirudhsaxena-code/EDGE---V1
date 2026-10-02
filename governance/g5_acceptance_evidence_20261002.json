@@ -2,7 +2,7 @@
   "schema_version": "G5_ACCEPTANCE_EVIDENCE_V1",
   "gate_set": "G5-01..G5-27",
   "acceptance_status": "ACCEPTED",
-  "accepted_at": "2026-10-02T17:27:27Z",
+  "accepted_at": "2026-10-02T17:37:33.298Z",
   "methodology_version": "G5_STOCK_DD4_V1.0",
   "production_recommendation_id": "EDGE-LTF-20261002-171436-AUTO",
   "forecast_path_hash": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
@@ -14,10 +14,17 @@
     "ltf_candidate": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37026336185",
     "cupid_candidate": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37026342821",
     "production_e2e": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039338271",
-    "console_chat_parity": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040793516",
+    "console_chat_parity": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040813577",
     "engine_main_ci": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039263958",
     "console_main_ci": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564517",
-    "console_production_smoke": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564633"
+    "console_production_smoke": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564633",
+    "ltf_production_e2e": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039338271",
+    "cupid_production_e2e": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37039520276",
+    "ltf_console_chat_parity": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040813577",
+    "cupid_console_chat_parity": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040944200",
+    "missing_evidence_acceptance": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37041477107",
+    "engine_acceptance_manifest_ci": "https://github.com/kanirudhsaxena-code/EDGE---V1/actions/runs/37041238069",
+    "console_deploy": "https://github.com/kanirudhsaxena-code/EDGE-CONSOLE/actions/runs/37040564526"
   },
   "gates": {
     "G5-01": {
@@ -30,7 +37,7 @@
     },
     "G5-03": {
       "status": "PASS",
-      "evidence": "Console/Chat parity run 37040793516 validates four canonical EDGE sections"
+      "evidence": "Post-merge Console/Chat parity runs 37040813577 (LTF) and 37040944200 (CUPID) validate the four canonical EDGE sections."
     },
     "G5-04": {
       "status": "PASS",
@@ -46,7 +53,7 @@
     },
     "G5-07": {
       "status": "PASS",
-      "evidence": "Parity run 37040793516 validates each row date, direction, zone and Bull/Base/Bear probabilities"
+      "evidence": "Post-merge parity runs 37040813577 and 37040944200 validate every row date, direction, zone and exact Bull/Base/Bear probability vector."
     },
     "G5-08": {
       "status": "PASS",
@@ -70,7 +77,7 @@
     },
     "G5-13": {
       "status": "PASS",
-      "evidence": "Live parity run 37040793516 renders CANONICAL FORECAST PATH with EXACTLY 5 rows"
+      "evidence": "Post-merge live parity runs 37040813577 and 37040944200 visibly render CANONICAL FORECAST PATH with EXACTLY 5 rows."
     },
     "G5-14": {
       "status": "PASS",
@@ -78,19 +85,19 @@
     },
     "G5-15": {
       "status": "PASS",
-      "evidence": "Live parity presentation run 37040793516 reports CURRENT STOCK OUTCOME · D:D+4 and no D+5 row"
+      "evidence": "Post-merge live parity runs report CURRENT STOCK OUTCOME · D:D+4 and no D+5 row."
     },
     "G5-16": {
       "status": "PASS",
-      "evidence": "Chat capture run 37040793516 uses LIVE_EDGE_CONSOLE source"
+      "evidence": "Post-merge Chat capture runs 37040813577 and 37040944200 use LIVE_EDGE_CONSOLE source."
     },
     "G5-17": {
       "status": "PASS",
-      "evidence": "Chat parity run 37040793516 compares all five labels, dates, directions, zones and probability vectors"
+      "evidence": "Post-merge Chat parity runs compare all five labels, dates, directions, zones and Bull/Base/Bear vectors exactly."
     },
     "G5-18": {
       "status": "PASS",
-      "evidence": "Chat capture consumes Console DOM and governed report source; no Chat row reconstruction"
+      "evidence": "Post-merge Chat capture consumes Console DOM plus governed report source with no row reconstruction."
     },
     "G5-19": {
       "status": "PASS",
@@ -98,35 +105,43 @@
     },
     "G5-20": {
       "status": "PASS",
-      "evidence": "CUPID production candidate run 37026342821 READY after governed sector-resolution regression"
+      "evidence": "CUPID production candidate 37026342821 READY; governed production E2E 37039520276 published EDGE-CUPID-20261002-171606-AUTO with exact five-row readback."
     },
     "G5-21": {
       "status": "PASS",
-      "evidence": "Real fail-closed candidate runs 37019725385 and 37020394863 returned FRESH_GOVERNED_RESEARCH_REQUIRED; missing-bundle regression remains green"
+      "evidence": "Dedicated current-build negative acceptance run 37041477107 emitted G5_MISSING_EVIDENCE_FAIL_CLOSED=PASS with FRESH_GOVERNED_RESEARCH_REQUIRED, publishing=false and trading=false before market acquisition."
     },
     "G5-22": {
       "status": "PASS",
-      "evidence": "Engine main CI 37039263958, Console main CI 37040564517, Production Smoke 37040564633 and Chat Presentation Lock 37040432749 green"
+      "evidence": "Engine acceptance-manifest main CI 37041238069, Console post-readmodel main CI 37040564517, Console deploy 37040564526 and Production Smoke 37040564633 are green."
     },
     "G5-23": {
       "status": "PASS",
-      "evidence": "Fresh governed production E2E run 37039338271 published LTF recommendation EDGE-LTF-20261002-171436-AUTO"
+      "evidence": "Fresh governed production E2E runs 37039338271 (LTF) and 37039520276 (CUPID) published exact immutable D:D+4 paths."
     },
     "G5-24": {
       "status": "PASS",
-      "evidence": "Live Console readback/capture run 37040793516 succeeded against exact E2E recommendation"
+      "evidence": "Post-merge live Console readback/capture runs 37040813577 and 37040944200 succeeded against exact LTF/CUPID E2E recommendation identities."
     },
     "G5-25": {
       "status": "PASS",
-      "evidence": "Run 37040793516 emitted CHAT_FIVE_SESSION_PARITY=TRUE and CHAT_PRESENTATION_VALID=TRUE"
+      "evidence": "Post-merge runs 37040813577 and 37040944200 emitted CHAT_FIVE_SESSION_PARITY=TRUE with exact row probability parity."
     },
     "G5-26": {
       "status": "PASS",
-      "evidence": "This governed manifest promotion occurs only after G5-01 through G5-25 proof"
+      "evidence": "This reconciled manifest promotion is committed only after LTF/CUPID E2E, post-merge Console/Chat parity and dedicated missing-evidence proof completed."
     },
     "G5-27": {
       "status": "PASS",
-      "evidence": "Acceptance is promoted only by this final manifest after every preceding gate is PASS"
+      "evidence": "Final acceptance timestamp and manifest are reconciled only after every G5-01 through G5-26 proof is complete."
     }
+  },
+  "production_recommendation_ids": {
+    "LTF": "EDGE-LTF-20261002-171436-AUTO",
+    "CUPID": "EDGE-CUPID-20261002-171606-AUTO"
+  },
+  "forecast_path_hashes": {
+    "LTF": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
+    "CUPID": "e40cf232779f5222db1d8679a79ed0e1cb2aeb360a01058c4b83708e92ba437f"
   }
 }

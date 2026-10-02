@@ -36,3 +36,14 @@ def test_g5_release_manifest_requires_complete_27_gate_evidence():
     assert all(evidence["gates"][gate]["status"] == "PASS" for gate in expected)
     assert evidence["production_recommendation_id"] == g5["production_recommendation_id"]
     assert evidence["forecast_path_hash"] == g5["forecast_path_hash"]
+    assert evidence["accepted_at"] == g5["accepted_at"]
+    assert g5["console_chat_parity_run_id"] == "37040813577"
+    assert g5["cupid_console_chat_parity_run_id"] == "37040944200"
+    assert g5["production_e2e_run_id"] == "37039338271"
+    assert g5["cupid_production_e2e_run_id"] == "37039520276"
+    assert g5["missing_evidence_run_id"] == "37041477107"
+    assert evidence["production_recommendation_ids"]["CUPID"] == g5["cupid_production_recommendation_id"]
+    assert evidence["forecast_path_hashes"]["CUPID"] == g5["cupid_forecast_path_hash"]
+    assert "37041477107" in evidence["decisive_runs"]["missing_evidence_acceptance"]
+    assert "37040813577" in evidence["decisive_runs"]["ltf_console_chat_parity"]
+    assert "37040944200" in evidence["decisive_runs"]["cupid_console_chat_parity"]

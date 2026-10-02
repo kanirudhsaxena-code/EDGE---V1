@@ -147,3 +147,39 @@ def test_market_provider_uses_latest_available_daily_when_intraday_empty():
     assert all("/intraday/" not in ref for ref in market.payloads)
     cats={o.category for o in market.observations}
     assert {"PRICE_STRUCTURE","SPECIFIC_CHART_PATTERN","RELATIVE_STRENGTH","PV_PVPO"} <= cats
+
+
+class IndexOpener:
+    def __init__(self, name="Nifty Financial Services"):
+        self.name=name
+
+    def open(self, request, timeout=20):
+        url=request.full_url
+        assert "/v2/instruments/search" in url
+        assert "segments=INDEX" in url
+        return Response(url, {
+            "status":"success",
+            "data":[{
+                "name":self.name,
+                "segment":"NSE_INDEX",
+                "exchange":"NSE",
+                "instrument_key":"NSE_INDEX|Nifty Financial Services",
+                "trading_symbol":"FINNIFTY",
+                "instrument_type":"INDEX",
+            }],
+        })
+
+
+def test_exact_nse_sector_index_resolution():
+    p=UpstoxReadOnlyStockProvider("token",opener=IndexOpener(),sleep=lambda _:None)
+    key,name=p.resolve_nse_index("Nifty Financial Services")
+    assert key=="NSE_INDEX|Nifty Financial Services"
+    assert name=="Nifty Financial Services"
+
+    missing=UpstoxReadOnlyStockProvider("token",opener=IndexOpener("Nifty Bank"),sleep=lambda _:None)
+    try:
+        missing.resolve_nse_index("Nifty Financial Services")
+    except Exception as exc:
+        assert "INSTRUMENT_NOT_FOUND" in str(exc)
+    else:
+        raise AssertionError("sector index resolution must be exact")

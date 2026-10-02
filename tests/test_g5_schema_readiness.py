@@ -32,3 +32,25 @@ def test_autonomous_publish_fails_closed_on_schema_drift():
     publish_pos = workflow.index("Run governed autonomous publisher")
     assert verify_pos < publish_pos
     assert "G5_SCHEMA_NOT_READY" in workflow
+
+
+def test_g5_float_precision_migration_is_required_for_exact_readback():
+    sql = (ROOT / "migrations" / "008_edge_stock_forecast_path_float_precision.sql").read_text(encoding="utf-8").lower()
+    required_columns = (
+        "bull_probability",
+        "base_probability",
+        "bear_probability",
+        "expected_centre",
+        "outer_expected_zone_low",
+        "outer_expected_zone_high",
+    )
+    for column in required_columns:
+        assert f"alter column {column} type double precision" in sql
+
+
+def test_g5_production_e2e_applies_precision_migration_before_publish():
+    workflow = (ROOT / ".github" / "workflows" / "g5-production-e2e-acceptance.yml").read_text(encoding="utf-8")
+    apply_pos = workflow.index("migrations/008_edge_stock_forecast_path_float_precision.sql")
+    publish_pos = workflow.index("Run governed production E2E publish")
+    assert apply_pos < publish_pos
+    assert "double precision" in workflow

@@ -120,6 +120,7 @@ def test_sector_identity_comes_from_profile_and_registry_never_defaults_to_nifty
     assert source_ref in payloads
     assert sector_benchmark_name(sector) == "Nifty Financial Services"
     assert sector_benchmark_name("Private Bank") == "Nifty Private Bank"
+    assert sector_benchmark_name("Household Products") == "Nifty FMCG"
     with pytest.raises(G5InputError, match="unsupported"):
         sector_benchmark_name("Unmapped Specialist Sector")
 

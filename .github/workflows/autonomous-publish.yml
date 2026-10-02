@@ -60,6 +60,14 @@ jobs:
               'edge_stock_forecast_paths',
               'edge_stock_forecast_path_rows',
           }
+          required_float_columns={
+              'bull_probability',
+              'base_probability',
+              'bear_probability',
+              'expected_centre',
+              'outer_expected_zone_low',
+              'outer_expected_zone_high',
+          }
           conn=psycopg.connect(os.environ['DATABASE_URL'])
           try:
               cur=conn.cursor()
@@ -75,12 +83,30 @@ jobs:
                   (list(required_tables),),
               )
               found={str(row[0]) for row in cur.fetchall()}
-              if found != required_tables:
+              cur.execute(
+                  """
+                  select column_name,data_type
+                  from information_schema.columns
+                  where table_schema=current_schema()
+                    and table_name='edge_stock_forecast_path_rows'
+                    and column_name = any(%s)
+                  """,
+                  (list(required_float_columns),),
+              )
+              found_types={str(name):str(dtype) for name,dtype in cur.fetchall()}
+              schema_ready=(
+                  found == required_tables
+                  and set(found_types) == required_float_columns
+                  and all(dtype=='double precision' for dtype in found_types.values())
+              )
+              if not schema_ready:
                   print(json.dumps({
                       'status':'BLOCKED_CONFIGURATION',
                       'diagnostic_code':'G5_SCHEMA_NOT_READY',
                       'required_tables':sorted(required_tables),
                       'found_tables':sorted(found),
+                      'required_float_columns':sorted(required_float_columns),
+                      'found_float_types':found_types,
                       'publishing_enabled':False,
                       'trading_enabled':False,
                   },sort_keys=True))
@@ -88,6 +114,7 @@ jobs:
               print(json.dumps({
                   'G5_SCHEMA_READINESS':'PASS',
                   'tables':sorted(found),
+                  'float_storage_types':found_types,
               },sort_keys=True))
           finally:
               conn.close()

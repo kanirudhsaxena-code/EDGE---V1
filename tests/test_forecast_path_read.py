@@ -75,3 +75,46 @@ def test_incomplete_persisted_path_fails_closed():
         def __init__(self,path): self.cur=ShortCursor(path); self.closed=False
     with pytest.raises(RuntimeError,match="incomplete or misordered"):
         ForecastPathReadAdapter(lambda:ShortConn(original)).recover(original.recommendation_id)
+
+
+def test_jsonb_numeric_lexical_normalization_preserves_hash_identity():
+    original=fixture_path()
+    rows=[]
+    for row in original.rows:
+        lineage=dict(row.lineage)
+        lineage["numeric_weight"]=1.0
+        lineage["nested_numeric"]={"value":2.0}
+        rows.append(ForecastPathRow(
+            row.horizon_label,row.target_trading_date,row.direction,
+            row.bull_probability,row.base_probability,row.bear_probability,
+            row.outer_expected_zone_low,row.outer_expected_zone_high,
+            row.evidence_basis,row.regime_context,row.verification_state,
+            lineage,row.expected_centre,
+        ))
+    original=ForecastPathWrite(
+        original.recommendation_id,
+        original.source_run_id,
+        original.issued_at,
+        tuple(rows),
+    )
+
+    class JsonbNormalizedCursor(Cursor):
+        def fetchall(self):
+            raw=super().fetchall()
+            out=[]
+            for record in raw:
+                values=list(record)
+                lineage=json.loads(values[13]) if isinstance(values[13],str) else dict(values[13])
+                lineage["numeric_weight"]=1
+                lineage["nested_numeric"]={"value":2}
+                values[13]=lineage
+                out.append(tuple(values))
+            return out
+
+    class JsonbNormalizedConn(Conn):
+        def __init__(self,path):
+            self.cur=JsonbNormalizedCursor(path)
+            self.closed=False
+
+    recovered=ForecastPathReadAdapter(lambda:JsonbNormalizedConn(original)).recover(original.recommendation_id)
+    assert forecast_path_hash(recovered)==forecast_path_hash(original)

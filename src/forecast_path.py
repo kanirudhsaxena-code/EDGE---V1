@@ -87,6 +87,24 @@ def _canonical_number(value: Any) -> Optional[float]:
     return float(value)
 
 
+def _canonical_json_value(value: Any) -> Any:
+    """Recursively normalize JSON-like lineage values before hashing.
+
+    PostgreSQL JSONB can normalize numeric lexical forms (for example 1.0 vs 1)
+    while preserving the governed numeric value. Hash identity must therefore
+    bind to the value, not to the incidental JSON text representation.
+    """
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, Mapping):
+        return {str(key): _canonical_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical_json_value(item) for item in value]
+    return value
+
+
 def _payload(path: ForecastPathWrite) -> dict[str, Any]:
     return {
         "version": path.version,
@@ -111,7 +129,7 @@ def _payload(path: ForecastPathWrite) -> dict[str, Any]:
                 "evidence_basis": row.evidence_basis,
                 "regime_context": row.regime_context,
                 "verification_state": row.verification_state,
-                "lineage": dict(row.lineage),
+                "lineage": _canonical_json_value(dict(row.lineage)),
             }
             for row in path.rows
         ],

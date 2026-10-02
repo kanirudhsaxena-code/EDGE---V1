@@ -1,0 +1,9 @@
+{
+  "acceptance_scope": "G5",
+  "e2e_publish": true,
+  "ticker": "CUPID",
+  "holding_state": "UNKNOWN",
+  "research_bundle_id": "edge-research-CUPID-a110e91260766e5e6b168b258e76a38073fd1b807e787b7c47645207afa1607e",
+  "requested_by": "ChatGPT",
+  "purpose": "G5 exact immutable forecast-path hash readback validation for CUPID after lossless storage repair"
+}

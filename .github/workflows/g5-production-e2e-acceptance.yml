@@ -59,7 +59,79 @@ jobs:
           PY
 
       - name: Install PostgreSQL client
-        run: python -m pip install "psycopg[binary]>=3.2,<4"
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          python -m pip install "psycopg[binary]>=3.2,<4"
+
+      - name: Apply and verify G5 forecast-path schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/007_edge_stock_forecast_path.sql
+          python - <<'PY'
+          import json, os
+          import psycopg
+
+          required_tables={
+              'edge_stock_forecast_paths',
+              'edge_stock_forecast_path_rows',
+          }
+          required_triggers={
+              'trg_edge_stock_forecast_paths_immutable',
+              'trg_edge_stock_forecast_path_rows_immutable',
+          }
+
+          conn=psycopg.connect(os.environ['DATABASE_URL'])
+          try:
+              cur=conn.cursor()
+              cur.execute(
+                  """
+                  select c.relname
+                  from pg_class c
+                  join pg_namespace n on n.oid=c.relnamespace
+                  where n.nspname=current_schema()
+                    and c.relname = any(%s)
+                    and c.relkind='r'
+                  """,
+                  (list(required_tables),),
+              )
+              found_tables={str(row[0]) for row in cur.fetchall()}
+              assert found_tables==required_tables, (found_tables, required_tables)
+
+              cur.execute(
+                  """
+                  select t.tgname
+                  from pg_trigger t
+                  join pg_class c on c.oid=t.tgrelid
+                  join pg_namespace n on n.oid=c.relnamespace
+                  where n.nspname=current_schema()
+                    and c.relname = any(%s)
+                    and not t.tgisinternal
+                  """,
+                  (list(required_tables),),
+              )
+              found_triggers={str(row[0]) for row in cur.fetchall()}
+              assert required_triggers <= found_triggers, (found_triggers, required_triggers)
+
+              proof={
+                  'status':'PASS',
+                  'schema_contract':'G5_EDGE_STOCK_FORECAST_PATH_V1',
+                  'tables':sorted(found_tables),
+                  'immutability_triggers':sorted(required_triggers),
+              }
+              json.dump(
+                  proof,
+                  open('g5-schema-readiness.json','w',encoding='utf-8'),
+                  sort_keys=True,
+                  indent=2,
+              )
+              print(json.dumps({'G5_SCHEMA_READINESS':'PASS',**proof},sort_keys=True))
+          finally:
+              conn.close()
+          PY
 
       - name: Run governed production E2E publish
         run: |
@@ -174,5 +246,6 @@ jobs:
             edge-g5-e2e-publish.json
             edge-published-report.md
             g5-persistence-readback.json
+            g5-schema-readiness.json
           if-no-files-found: ignore
           retention-days: 30

@@ -150,8 +150,15 @@ def test_market_provider_uses_latest_available_daily_when_intraday_empty():
 
 
 class IndexOpener:
-    def __init__(self, name="Nifty Financial Services"):
+    def __init__(
+        self,
+        name="Nifty Fin Service",
+        instrument_key="NSE_INDEX|Nifty Fin Service",
+        trading_symbol="FINNIFTY",
+    ):
         self.name=name
+        self.instrument_key=instrument_key
+        self.trading_symbol=trading_symbol
 
     def open(self, request, timeout=20):
         url=request.full_url
@@ -163,23 +170,31 @@ class IndexOpener:
                 "name":self.name,
                 "segment":"NSE_INDEX",
                 "exchange":"NSE",
-                "instrument_key":"NSE_INDEX|Nifty Financial Services",
-                "trading_symbol":"FINNIFTY",
+                "instrument_key":self.instrument_key,
+                "trading_symbol":self.trading_symbol,
                 "instrument_type":"INDEX",
             }],
         })
 
 
-def test_exact_nse_sector_index_resolution():
+def test_exact_nse_sector_index_resolution_accepts_only_governed_provider_alias():
     p=UpstoxReadOnlyStockProvider("token",opener=IndexOpener(),sleep=lambda _:None)
     key,name=p.resolve_nse_index("Nifty Financial Services")
-    assert key=="NSE_INDEX|Nifty Financial Services"
+    assert key=="NSE_INDEX|Nifty Fin Service"
     assert name=="Nifty Financial Services"
 
-    missing=UpstoxReadOnlyStockProvider("token",opener=IndexOpener("Nifty Bank"),sleep=lambda _:None)
+    wrong=UpstoxReadOnlyStockProvider(
+        "token",
+        opener=IndexOpener(
+            name="Nifty Bank",
+            instrument_key="NSE_INDEX|Nifty Bank",
+            trading_symbol="BANKNIFTY",
+        ),
+        sleep=lambda _:None,
+    )
     try:
-        missing.resolve_nse_index("Nifty Financial Services")
+        wrong.resolve_nse_index("Nifty Financial Services")
     except Exception as exc:
         assert "INSTRUMENT_NOT_FOUND" in str(exc)
     else:
-        raise AssertionError("sector index resolution must be exact")
+        raise AssertionError("unregistered provider alias must fail closed")

@@ -20,6 +20,7 @@ def main() -> int:
     token=os.getenv("UPSTOX_ANALYTICS_TOKEN","")
     db_url=os.getenv("DATABASE_URL","")
     holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
+    research_bundle_id=os.getenv("EDGE_RESEARCH_BUNDLE_ID","").strip()
 
     if not token:
         print(json.dumps({
@@ -56,6 +57,7 @@ def main() -> int:
             upstox_token=token,
             holding_state=holding,
             publish=False,
+            research_bundle_id=research_bundle_id or None,
         )
         payload={
             "status":result.status,

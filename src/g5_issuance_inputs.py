@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 import hashlib
 import json
+from math import isfinite
 from statistics import median
 from typing import Any, Mapping, Optional, Sequence
 
@@ -116,7 +117,9 @@ def candles_from_payload(payload: Mapping[str, Any]) -> list[list[Any]]:
     rows = data.get("candles") if isinstance(data, Mapping) else None
     if not isinstance(rows, list):
         raise G5InputError("G5 candle payload is unavailable")
-    candles = [row for row in rows if isinstance(row, list) and len(row) >= 6]
+    if any(not isinstance(row, list) or len(row) < 6 for row in rows):
+        raise G5InputError("G5 candle history contains malformed rows")
+    candles = list(rows)
     try:
         candles.sort(key=lambda row: str(row[0]))
     except Exception as exc:
@@ -158,6 +161,8 @@ def compute_atr14(candles: Sequence[Sequence[Any]]) -> float:
             prev_close = float(prev[4])
         except (TypeError, ValueError, IndexError) as exc:
             raise G5InputError("G5 ATR14 candle values are invalid") from exc
+        if not all(isfinite(v) and v > 0 for v in (high, low, prev_close)) or high < low:
+            raise G5InputError("G5 ATR14 OHLC values are invalid")
         tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
         if tr <= 0:
             raise G5InputError("G5 ATR14 true range must be positive")
@@ -195,14 +200,17 @@ def liquidity_ratio(candles: Sequence[Sequence[Any]]) -> float:
         except (TypeError, ValueError, IndexError) as exc:
             raise G5InputError("G5 liquidity candle values are invalid") from exc
         traded_value = close * volume
-        if close <= 0 or volume <= 0 or traded_value <= 0:
+        if not all(isfinite(v) and v > 0 for v in (close, volume, traded_value)):
             raise G5InputError("G5 liquidity requires positive close and volume")
         values.append(traded_value)
     prior20 = median(values[:20])
     latest5 = median(values[20:])
     if prior20 <= 0:
         raise G5InputError("G5 liquidity denominator is invalid")
-    return latest5 / prior20
+    ratio = latest5 / prior20
+    if not isfinite(ratio) or ratio <= 0:
+        raise G5InputError("G5 liquidity ratio is invalid")
+    return ratio
 
 
 def liquidity_state_from_ratio(ratio: float) -> str:
@@ -210,7 +218,7 @@ def liquidity_state_from_ratio(ratio: float) -> str:
         value = float(ratio)
     except (TypeError, ValueError) as exc:
         raise G5InputError("G5 liquidity ratio is invalid") from exc
-    if value <= 0:
+    if not isfinite(value) or value <= 0:
         raise G5InputError("G5 liquidity ratio must be positive")
     if value >= 0.75:
         return "NORMAL"

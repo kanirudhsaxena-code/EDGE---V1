@@ -9,7 +9,8 @@ NSE trading checkpoints.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Iterable, Mapping, Sequence
 
 from src.market_providers import UpstoxReadOnlyStockProvider
@@ -37,6 +38,56 @@ def parse_nse_trading_holidays(payload: Mapping) -> set[date]:
             raise ValueError("invalid holiday date in provider payload") from exc
     return holidays
 
+
+
+G5_CALENDAR_VERSION = "UPSTOX_NSE_HOLIDAYS_V1"
+
+
+@dataclass(frozen=True)
+class G5TradingDates:
+    dates: tuple[date, date, date, date, date]
+    calendar_version: str
+    source_ref: str
+    acquired_at: datetime
+
+
+def g5_nse_trading_dates(
+    start_on: date,
+    holidays: Iterable[date],
+    *,
+    count: int = 5,
+) -> tuple[date, ...]:
+    """Return D:D+4 with D equal to the first valid session on/after start_on."""
+    if count <= 0:
+        raise ValueError("count must be positive")
+    closed = set(holidays)
+    out = []
+    day = start_on
+    safety = 0
+    while len(out) < count:
+        safety += 1
+        if safety > 40:
+            raise RuntimeError("unable to resolve requested G5 trading dates")
+        if day.weekday() < 5 and day not in closed:
+            out.append(day)
+        day += timedelta(days=1)
+    return tuple(out)
+
+
+def fetch_g5_five_nse_trading_dates(
+    provider: UpstoxReadOnlyStockProvider,
+    *,
+    start_on: date,
+) -> G5TradingDates:
+    env = provider.market_holidays()
+    holidays = parse_nse_trading_holidays(env.payload)
+    rows = g5_nse_trading_dates(start_on, holidays, count=5)
+    return G5TradingDates(
+        dates=(rows[0], rows[1], rows[2], rows[3], rows[4]),
+        calendar_version=G5_CALENDAR_VERSION,
+        source_ref=env.source_ref,
+        acquired_at=env.received_at,
+    )
 
 def next_nse_trading_dates(
     start_after: date,

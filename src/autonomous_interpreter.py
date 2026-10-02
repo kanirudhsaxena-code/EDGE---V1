@@ -80,10 +80,16 @@ def _atr(candles: Sequence[list], n: int = 14) -> Optional[float]:
     return sum(trs) / len(trs) if trs else None
 
 
-def _technical_scores(stock_daily: list[list], benchmark_daily: list[list], option_chain: Optional[Mapping]):
+
+def price_structure_raw_score(stock_daily: Sequence[list]) -> int:
+    """Return the frozen EDGE Price Structure raw score from verified daily candles.
+
+    This is the existing EDGE V1 classifier surfaced as a reusable deterministic
+    boundary for G5. Its thresholds are unchanged from the production interpreter.
+    """
     closes = [_close(r) for r in stock_daily]
     if len(closes) < 20:
-        raise ValueError("at least 20 daily candles are required for autonomous technical interpretation")
+        raise ValueError("at least 20 daily candles are required for price structure")
 
     c = closes[-1]
     sma20 = _sma(closes, 20)
@@ -92,15 +98,22 @@ def _technical_scores(stock_daily: list[list], benchmark_daily: list[list], opti
     r20 = _pct_change(closes[-21], c) if len(closes) >= 21 else 0.0
 
     if sma50 is not None and c > sma20 > sma50 and (r5 or 0) > 2:
-        price_score = 2
-    elif c > sma20 and (r20 or 0) >= 0:
-        price_score = 1
-    elif sma50 is not None and c < sma20 < sma50 and (r5 or 0) < -2:
-        price_score = -2
-    elif c < sma20 and (r20 or 0) <= 0:
-        price_score = -1
-    else:
-        price_score = 0
+        return 2
+    if c > sma20 and (r20 or 0) >= 0:
+        return 1
+    if sma50 is not None and c < sma20 < sma50 and (r5 or 0) < -2:
+        return -2
+    if c < sma20 and (r20 or 0) <= 0:
+        return -1
+    return 0
+
+def _technical_scores(stock_daily: list[list], benchmark_daily: list[list], option_chain: Optional[Mapping]):
+    closes = [_close(r) for r in stock_daily]
+    if len(closes) < 20:
+        raise ValueError("at least 20 daily candles are required for autonomous technical interpretation")
+
+    c = closes[-1]
+    price_score = price_structure_raw_score(stock_daily)
 
     prior = stock_daily[-21:-1] if len(stock_daily) >= 21 else stock_daily[:-1]
     prior_high = max(float(r[2]) for r in prior)

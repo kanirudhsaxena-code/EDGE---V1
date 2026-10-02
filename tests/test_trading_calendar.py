@@ -1,6 +1,7 @@
 from datetime import date
 
 from src.trading_calendar import (
+    g5_nse_trading_dates,
     next_nse_trading_dates,
     parse_nse_trading_holidays,
 )
@@ -73,3 +74,28 @@ def test_is_nse_trading_day_skips_weekend_and_trading_holiday():
     assert is_nse_trading_day(p,date(2026,10,2)) is False
     assert is_nse_trading_day(p,date(2026,10,3)) is False
     assert is_nse_trading_day(p,date(2026,10,5)) is True
+
+
+def test_g5_dates_include_d_when_valid_and_roll_forward_when_closed():
+    assert g5_nse_trading_dates(
+        date(2026,10,1),
+        {date(2026,10,2)},
+        count=5,
+    ) == (
+        date(2026,10,1),
+        date(2026,10,5),
+        date(2026,10,6),
+        date(2026,10,7),
+        date(2026,10,8),
+    )
+    assert g5_nse_trading_dates(
+        date(2026,10,2),
+        {date(2026,10,2)},
+        count=5,
+    ) == (
+        date(2026,10,5),
+        date(2026,10,6),
+        date(2026,10,7),
+        date(2026,10,8),
+        date(2026,10,9),
+    )

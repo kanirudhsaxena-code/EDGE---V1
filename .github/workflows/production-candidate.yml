@@ -13,8 +13,8 @@ on:
         required: true
         default: "UNKNOWN"
       research_bundle_id:
-        description: "Fresh immutable EDGE_RESEARCH_BUNDLE_V1 id; required by the governed evidence gate"
-        required: true
+        description: "Optional exact bundle ID; omitted selects latest eligible governed stored bundle"
+        required: false
 
 permissions:
   contents: read

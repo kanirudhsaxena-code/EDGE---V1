@@ -232,6 +232,42 @@ def load_governed_research_bundle(
     )
 
 
+def latest_fresh_governed_research_bundle(
+    connection:Any, *, ticker:str, run_at:datetime,
+)->Optional[GovernedResearchBundle]:
+    """Resolve a stored eligible bundle without guessing IDs or refreshing evidence.
+
+    Reuse the existing reader/verification gate; never create an artifact or
+    change its freshness timestamp. An invalid newer candidate does not hide a
+    valid older candidate within the same governed 24-hour window.
+    """
+    from datetime import timedelta
+    ticker=ticker.strip().upper()
+    cutoff=run_at.astimezone(timezone.utc)-timedelta(hours=24)
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            select bundle_id from edge_research_bundles
+             where ticker=%s and status='READY' and research_fresh_at >= %s
+             order by research_fresh_at desc, inserted_at desc, bundle_id desc
+            """, (ticker,cutoff),
+        )
+        candidates=cur.fetchall()
+    for (bundle_id,) in candidates:
+        try:
+            bundle=load_governed_research_bundle(
+                connection,str(bundle_id),ticker=ticker,run_at=run_at,
+            )
+        except ValueError:
+            continue
+        if bundle.ticker != ticker or bundle.bundle_id != str(bundle_id):
+            continue
+        stored_age=(run_at-bundle.research_fresh_at).total_seconds()/60
+        if -2 <= stored_age <= 24*60:
+            return bundle
+    return None
+
+
 def _independent_verified_claims(
     research:GovernedResearchBundle,
     component:str,

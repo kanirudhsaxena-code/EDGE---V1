@@ -1,0 +1,9 @@
+{
+  "acceptance_scope": "G5",
+  "e2e_publish": true,
+  "ticker": "LTF",
+  "holding_state": "UNKNOWN",
+  "research_bundle_id": "edge-research-LTF-b535f1fbcb8b359731e1481de4eb6b1fda510ac64128ea630b54139245e88798",
+  "requested_by": "ChatGPT",
+  "purpose": "G5 production schema repair validation and exact persistence readback"
+}

@@ -21,15 +21,20 @@
   "governance_note": "V1.3 supersedes V1.2 for new standard EDGE Stocks outputs without changing the EDGE V1 analytical core.",
   "g5_stock_dd4_release": {
     "status": "ACCEPTED",
-    "accepted_at": "2026-10-02T17:27:27Z",
+    "accepted_at": "2026-10-02T17:37:33.298Z",
     "methodology_version": "G5_STOCK_DD4_V1.0",
     "forecast_path_contract": "EDGE_STOCK_FORECAST_PATH_V1",
     "acceptance_gate_set": "G5-01..G5-27",
     "acceptance_evidence": "governance/g5_acceptance_evidence_20261002.json",
     "production_recommendation_id": "EDGE-LTF-20261002-171436-AUTO",
     "forecast_path_hash": "6dd2b50f4fe6108fa593e409414ed8a6fb8c67c6cfccdac54fe55f3e81e7e59f",
-    "console_chat_parity_run_id": "37040793516",
+    "console_chat_parity_run_id": "37040813577",
     "production_e2e_run_id": "37039338271",
-    "methodology_status": "ADDITIVE_FROZEN_CORE_UNCHANGED"
+    "methodology_status": "ADDITIVE_FROZEN_CORE_UNCHANGED",
+    "cupid_console_chat_parity_run_id": "37040944200",
+    "cupid_production_e2e_run_id": "37039520276",
+    "missing_evidence_run_id": "37041477107",
+    "cupid_production_recommendation_id": "EDGE-CUPID-20261002-171606-AUTO",
+    "cupid_forecast_path_hash": "e40cf232779f5222db1d8679a79ed0e1cb2aeb360a01058c4b83708e92ba437f"
   }
 }

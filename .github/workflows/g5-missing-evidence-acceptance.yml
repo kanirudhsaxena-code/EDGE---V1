@@ -20,6 +20,8 @@ jobs:
       UPSTOX_ANALYTICS_TOKEN: G5_NEGATIVE_MUST_NOT_BE_USED
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

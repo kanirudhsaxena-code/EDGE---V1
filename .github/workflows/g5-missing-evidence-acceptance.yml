@@ -1,0 +1,66 @@
+name: G5 Missing Evidence Acceptance
+
+on:
+  push:
+    branches:
+      - 'g5-missing-evidence-*'
+    paths:
+      - 'negative-validation-requests/*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  missing-research-fails-closed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      UPSTOX_ANALYTICS_TOKEN: G5_NEGATIVE_MUST_NOT_BE_USED
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve negative validation request
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^negative-validation-requests/[^/]+\.json$' | head -1)"
+          test -n "$FILE"
+          python - "$FILE" <<'PY'
+          import json,os,re,sys
+          data=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert data.get('expect_missing_research') is True,data
+          ticker=str(data.get('ticker') or '').strip().upper()
+          assert re.fullmatch(r'[A-Z0-9._&-]{1,20}',ticker),ticker
+          assert not data.get('research_bundle_id'),data
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as out:
+              out.write(f'EDGE_TICKER={ticker}\n')
+              out.write('EDGE_HOLDING_STATE=UNKNOWN\n')
+          PY
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Prove missing governed research fails closed before market acquisition
+        shell: bash
+        run: |
+          set +e
+          python -m src.production_candidate_cli > /tmp/g5-missing.json 2>&1
+          code=$?
+          set -e
+          cat /tmp/g5-missing.json
+          test "$code" = "3"
+          python - <<'PY'
+          import json
+          raw=open('/tmp/g5-missing.json',encoding='utf-8').read().strip()
+          data=json.loads(raw.splitlines()[-1])
+          assert data.get('status')=='BLOCKED_RESEARCH_BUNDLE',data
+          assert data.get('diagnostic_code')=='FRESH_GOVERNED_RESEARCH_REQUIRED',data
+          assert data.get('ticker')=='G5MISSING',data
+          assert data.get('publishing_enabled') is False,data
+          assert data.get('trading_enabled') is False,data
+          assert 'G5_NEGATIVE_MUST_NOT_BE_USED' not in raw
+          assert 'postgres' not in raw.lower()
+          print('G5_MISSING_EVIDENCE_FAIL_CLOSED=PASS')
+          PY

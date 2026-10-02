@@ -1,0 +1,178 @@
+name: G5 Production E2E Acceptance Request
+
+on:
+  push:
+    branches:
+      - 'g5-e2e-*'
+    paths:
+      - 'e2e-requests/*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Resolve governed G5 E2E request
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^e2e-requests/[^/]+\.json$' | head -1 || true)"
+          test -n "$FILE"
+          test -f "$FILE"
+          python - "$FILE" <<'PY'
+          import json, os, re, sys
+          data=json.load(open(sys.argv[1],encoding='utf-8'))
+          assert isinstance(data,dict), data
+          assert data.get('acceptance_scope')=='G5', data
+          assert data.get('e2e_publish') is True, data
+          ticker=str(data.get('ticker') or '').strip().upper()
+          holding=str(data.get('holding_state') or 'UNKNOWN').strip().upper()
+          bundle=str(data.get('research_bundle_id') or '').strip()
+          assert re.fullmatch(r'[A-Z0-9._&-]{1,20}',ticker), ticker
+          assert holding in {'UNKNOWN','HOLDS','NO_HOLDING'}, holding
+          assert re.fullmatch(r'[A-Za-z0-9._:-]{3,160}',bundle), bundle
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as out:
+              out.write(f'EDGE_TICKER={ticker}\n')
+              out.write(f'EDGE_HOLDING_STATE={holding}\n')
+              out.write('EDGE_RUN_MODE=MANUAL\n')
+              out.write(f'EDGE_RESEARCH_BUNDLE_ID={bundle}\n')
+              out.write(f'G5_EXPECTED_RESEARCH_BUNDLE_ID={bundle}\n')
+          print(json.dumps({
+              'acceptance_scope':'G5',
+              'ticker':ticker,
+              'holding_state':holding,
+              'research_bundle_id':bundle,
+              'e2e_publish':True,
+              'trading_enabled':False,
+          },sort_keys=True))
+          PY
+
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+
+      - name: Run governed production E2E publish
+        run: |
+          set -o pipefail
+          python -m src.autonomous_publish_cli | tee edge-g5-e2e-publish.json
+
+      - name: Prove atomic five-row persistence and exact readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          import psycopg
+          from src.forecast_path import forecast_path_hash
+          from src.forecast_path_read import recover_forecast_path_with_cursor
+
+          published=json.load(open('edge-g5-e2e-publish.json',encoding='utf-8'))
+          assert published.get('status')=='PUBLISHED', published
+          rid=str(published.get('recommendation_id') or '').strip()
+          persistence_id=str(published.get('persistence_id') or '').strip()
+          assert rid and persistence_id==rid, published
+          expected_bundle=os.environ['G5_EXPECTED_RESEARCH_BUNDLE_ID']
+
+          conn=psycopg.connect(os.environ['DATABASE_URL'])
+          try:
+              cur=conn.cursor()
+              path=recover_forecast_path_with_cursor(cur,rid)
+              labels=[row.horizon_label for row in path.rows]
+              assert labels==['D','D+1','D+2','D+3','D+4'], labels
+              dates=[row.target_trading_date.isoformat() for row in path.rows]
+              assert dates==sorted(dates) and len(set(dates))==5, dates
+              assert all(label!='D+5' for label in labels), labels
+              assert path.recommendation_id==rid
+              assert path.source_run_id==rid
+
+              required_lineage={'p0','atr14','stock_regime','sector_regime','liquidity','event_gap_risk','calendar'}
+              rows=[]
+              for row in path.rows:
+                  lineage=dict(row.lineage)
+                  assert lineage.get('methodology_version')=='G5_STOCK_DD4_V1.0', lineage
+                  assert lineage.get('producer_version')=='G5_STOCK_DD4_V1.0', lineage
+                  for key in ('source_ids','source_timestamps','source_hashes'):
+                      value=lineage.get(key)
+                      assert isinstance(value,dict) and required_lineage <= set(value), (key,value)
+                  rows.append({
+                      'horizon_label':row.horizon_label,
+                      'target_trading_date':row.target_trading_date.isoformat(),
+                      'direction':row.direction,
+                      'probabilities':{
+                          'bull':row.bull_probability,
+                          'base':row.base_probability,
+                          'bear':row.bear_probability,
+                      },
+                      'expected_centre':row.expected_centre,
+                      'outer_expected_zone':{
+                          'low':row.outer_expected_zone_low,
+                          'high':row.outer_expected_zone_high,
+                      },
+                      'verification_state':row.verification_state,
+                      'lineage':lineage,
+                  })
+
+              cur.execute(
+                  "select bundle_id from recommendation_research_bundle where recommendation_id=%s",
+                  (rid,),
+              )
+              linked=[str(r[0]) for r in cur.fetchall()]
+              assert linked==[expected_bundle], linked
+              cur.execute(
+                  "select count(*) from edge_stock_forecast_path_rows where recommendation_id=%s",
+                  (rid,),
+              )
+              assert int(cur.fetchone()[0])==5
+              cur.execute(
+                  "select count(*) from recommendations where recommendation_id=%s",
+                  (rid,),
+              )
+              assert int(cur.fetchone()[0])==1
+
+              proof={
+                  'status':'PASS',
+                  'acceptance_scope':'G5',
+                  'recommendation_id':rid,
+                  'research_bundle_id':expected_bundle,
+                  'forecast_path_hash':forecast_path_hash(path),
+                  'labels':labels,
+                  'target_trading_dates':dates,
+                  'rows':rows,
+                  'exact_five_row_readback':True,
+                  'parent_and_path_present':True,
+                  'research_link_exact':True,
+                  'trading_enabled':False,
+              }
+              json.dump(proof,open('g5-persistence-readback.json','w',encoding='utf-8'),sort_keys=True,indent=2,default=str)
+              print(json.dumps({
+                  'G5_PERSISTENCE_READBACK':'PASS',
+                  'recommendation_id':rid,
+                  'forecast_path_hash':proof['forecast_path_hash'],
+                  'labels':labels,
+                  'research_bundle_id':expected_bundle,
+              },sort_keys=True))
+          finally:
+              conn.close()
+          PY
+
+      - name: Upload bounded G5 E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g5-production-e2e-evidence
+          path: |
+            edge-g5-e2e-publish.json
+            edge-published-report.md
+            g5-persistence-readback.json
+          if-no-files-found: ignore
+          retention-days: 30

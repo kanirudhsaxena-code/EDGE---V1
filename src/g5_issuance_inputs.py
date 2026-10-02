@@ -88,16 +88,10 @@ def sector_benchmark_name(sector: str) -> str:
     normalized = _normalise_text(sector)
     if not normalized:
         raise G5InputError("G5 sector identity is unavailable")
-    matches = []
     for needles, benchmark in _SECTOR_INDEX_RULES:
         if any(_normalise_text(needle) in normalized for needle in needles):
-            matches.append(benchmark)
-    unique = tuple(dict.fromkeys(matches))
-    if not unique:
-        raise G5InputError(f"G5 sector is unsupported by governed registry: {sector}")
-    if len(unique) > 1:
-        raise G5InputError(f"G5 sector mapping is ambiguous: {sector} -> {','.join(unique)}")
-    return unique[0]
+            return benchmark
+    raise G5InputError(f"G5 sector is unsupported by governed registry: {sector}")
 
 
 def extract_profile_sector(payloads: Mapping[str, Mapping[str, Any]]) -> tuple[str, str]:

@@ -206,6 +206,7 @@ def main() -> int:
             research_bundle_id=research_bundle_id,
             canonical_requested_at=canonical_requested_at,
             canonical_attempt_slot=canonical_attempt_slot,
+            governance_trigger_type=("SCHEDULED" if run_mode=="SCHEDULED" or canonical_attempt_slot else "USER"),
             release_approval=ReleaseApproval(
                 shadow_validation_accepted=True,
                 zone_method_validated=True,

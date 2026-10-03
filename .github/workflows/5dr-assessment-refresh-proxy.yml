@@ -1,0 +1,126 @@
+name: 5DR Assessment Refresh Proxy
+run-name: 5DR Assessment Refresh · ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Governed EDGE Console request ID requiring fresh assessment state
+        required: true
+        type: string
+      console_url:
+        description: EDGE Console base URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 5dr-assessment-refresh-proxy
+  cancel-in-progress: false
+
+env:
+  FIVEDR_REF: 74aa9ecdd107e4b0142e8208e42db78ed6b11de6
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout pinned canonical 5DR assessment implementation
+        run: |
+          set -euo pipefail
+          git init fivedr
+          git -C fivedr remote add origin https://github.com/kanirudhsaxena-code/5DR-V2.git
+          git -C fivedr fetch --depth 1 origin "$FIVEDR_REF"
+          git -C fivedr checkout --detach FETCH_HEAD
+          test "$(git -C fivedr rev-parse HEAD)" = "$FIVEDR_REF"
+          test -f fivedr/src/assessment_handoff_cli.py
+          echo "PINNED_5DR_ASSESSMENT_REF=$FIVEDR_REF"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install canonical assessment dependency
+        run: |
+          python -m pip install --disable-pip-version-check 'psycopg2-binary>=2.9,<3'
+          python -m py_compile fivedr/src/assessment_handoff_cli.py
+
+      - name: Build fresh canonical 5DR assessment handoff
+        working-directory: fivedr
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          python -m src.assessment_handoff_cli
+          test -s assessment-handoff.json
+
+      - name: Validate canonical assessment contract
+        working-directory: fivedr
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+
+          data=json.load(open('assessment-handoff.json',encoding='utf-8'))
+          assert data.get('schema_version')=='5DR_ASSESSMENT_HANDOFF_V1', data
+          generated=str(data.get('generated_at') or '')
+          generated_at=datetime.fromisoformat(generated.replace('Z','+00:00'))
+          age=(datetime.now(timezone.utc)-generated_at).total_seconds()
+          assert -300 <= age <= 300, {'generated_at':generated,'age_seconds':age}
+          assessment=data.get('assessment') or {}
+          assert assessment.get('engine')=='5DR', assessment
+          assert assessment.get('forecast_id'), assessment
+          assert assessment.get('assessed_at'), assessment
+          metrics=assessment.get('metrics') or {}
+          assert metrics.get('assessment_snapshot_complete') is True, metrics
+          assert metrics.get('recommendation_ledger_complete') is True, metrics
+          day=metrics.get('day_metrics') or {}
+          assert all(label in day for label in ('D','D+1','D+2','D+3','D+4')), day
+          ledger=metrics.get('recommendation_ledger')
+          assert isinstance(ledger,list), metrics
+          assert len(ledger)==int(metrics.get('all_recommendations_count',-1)), metrics
+          json.dump(assessment,open('../assessment-import.json','w',encoding='utf-8'),separators=(',',':'))
+          print('ASSESSMENT_REFRESH_PROXY_CONTRACT=PASS')
+          PY
+
+      - name: Import fresh assessment into governed Console state
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="$CONSOLE_URL/api/5dr/assessment-import"
+          post_auth() {
+            curl --location --fail-with-body --silent --show-error \
+              -X POST \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H "Content-Type: application/json" \
+              --data-binary @assessment-import.json "$ENDPOINT"
+          }
+          post_public() {
+            curl --location --fail-with-body --silent --show-error \
+              -X POST -H "Content-Type: application/json" \
+              --data-binary @assessment-import.json "$ENDPOINT"
+          }
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            post_auth || post_public
+          else
+            post_public
+          fi
+          echo "ASSESSMENT_REFRESH_PROXY_IMPORT=PASS"
+
+      - name: Upload bounded refresh evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5dr-assessment-refresh-${{ inputs.request_id }}
+          path: |
+            fivedr/assessment-handoff.json
+            assessment-import.json
+          retention-days: 30
+          if-no-files-found: error

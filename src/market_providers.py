@@ -35,6 +35,11 @@ GOVERNED_NSE_INDEX_PROVIDER_ALIASES: Mapping[str, Mapping[str, tuple[str, ...]]]
         "trading_symbols": ("FINNIFTY",),
         "instrument_keys": ("NSE_INDEX|Nifty Fin Service",),
     },
+    "Nifty Oil & Gas": {
+        "queries": ("Nifty Oil & Gas", "Nifty Oil And Gas", "NIFTY_OIL_AND_GAS"),
+        "names": ("Nifty Oil & Gas", "Nifty Oil And Gas"),
+        "trading_symbols": ("NIFTY_OIL_AND_GAS",),
+    },
 }
 
 

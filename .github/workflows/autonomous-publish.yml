@@ -27,6 +27,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: edge-autonomous-publish-${{ inputs.ticker || 'LTF' }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest

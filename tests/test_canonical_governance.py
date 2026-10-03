@@ -6,6 +6,7 @@ from src.canonical_governance import (
     IST,
     classify_stock_run,
     canonical_key,
+    register_recommendation_governance_values,
     last_nyse_close_before,
     market_session_as_of,
     user_evidence_mode,
@@ -118,3 +119,64 @@ def test_market_session_as_of_does_not_fabricate_weekend_freshness():
     assert market_session_as_of(datetime(2026,10,4,21,0,tzinfo=IST))==date(2026,10,1)
     assert market_session_as_of(datetime(2026,10,5,8,0,tzinfo=IST))==date(2026,10,1)
     assert market_session_as_of(datetime(2026,10,5,11,0,tzinfo=IST))==date(2026,10,5)
+
+
+class _CaptureCursor:
+    def __init__(self):
+        self.params=None
+    def execute(self,sql,params):
+        self.params=params
+
+
+class _CaptureConn:
+    def __init__(self):
+        self.cur=_CaptureCursor()
+    def cursor(self):
+        return self.cur
+
+
+def _registered_governance(*,run,trigger_type="USER",slot=None):
+    conn=_CaptureConn()
+    out=register_recommendation_governance_values(
+        conn,
+        recommendation_id="EDGE-TEST",
+        ticker="LTF",
+        run_at=run,
+        completed_at=run,
+        horizon="D+5",
+        research_fresh_at=run,
+        requested_at=run,
+        canonical_attempt_slot=slot,
+        trigger_type=trigger_type,
+    )
+    return out,conn.cur.params
+
+
+def test_user_weekend_run_never_competes_as_overnight_fallback():
+    run=datetime(2026,10,4,4,40,tzinfo=IST)
+    raw=classify_stock_run(run)
+    assert raw["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL"
+    out,params=_registered_governance(run=run,trigger_type="USER")
+    assert out["candidate_type"]=="USER_CANONICAL_SNAPSHOT"
+    assert params[5]=="USER_CANONICAL_SNAPSHOT"
+    assert params[12]=="USER"
+    assert params[13]=="CLOSED_SESSION"
+    assert params[15]=="NONE"
+
+
+def test_scheduled_overnight_run_retains_fallback_eligibility():
+    run=datetime(2026,10,4,4,40,tzinfo=IST)
+    out,params=_registered_governance(run=run,trigger_type="SCHEDULED")
+    assert out["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL"
+    assert params[5]=="OVERNIGHT_FALLBACK_CANONICAL"
+    assert params[12]=="SCHEDULED"
+    assert params[15]=="NONE"
+
+
+def test_preopen_slot_is_scheduled_even_when_transport_is_workflow_dispatch():
+    run=datetime(2026,10,5,9,12,tzinfo=IST)
+    out,params=_registered_governance(run=run,trigger_type="USER",slot="09:12")
+    assert out["candidate_type"]=="PREOPEN_CANONICAL"
+    assert params[12]=="SCHEDULED"
+    assert params[13]=="PREOPEN"
+    assert params[15]=="SESSION_PREOPEN"

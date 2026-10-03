@@ -184,7 +184,7 @@ def main() -> int:
                 (ticker,f"EDGE-{ticker}-%-AUTO",india_date),
             )
             existing=cur.fetchone()
-        if existing and run_mode == "SCHEDULED":
+        if existing and (run_mode == "SCHEDULED" or canonical_requested_at is not None):
             print(json.dumps({
                 "status":"ALREADY_PUBLISHED_TODAY",
                 "ticker":ticker,

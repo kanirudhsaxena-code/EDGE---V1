@@ -23,4 +23,21 @@ def test_manual_run_is_not_blocked_by_close_or_non_trading_day_gate():
     assert 'run_mode=os.getenv("EDGE_RUN_MODE","MANUAL")' in text
     assert 'if run_mode == "SCHEDULED" and (' in text
     assert 'if run_mode == "SCHEDULED" and not is_nse_trading_day' in text
-    assert 'if existing and run_mode == "SCHEDULED"' in text
+    assert 'if existing and (run_mode == "SCHEDULED" or canonical_requested_at is not None)' in text
+
+
+def test_preopen_retry_publication_is_serialized_and_idempotent():
+    workflow=Path(".github/workflows/autonomous-publish.yml").read_text(encoding="utf-8")
+    publisher=Path("src/autonomous_publish_cli.py").read_text(encoding="utf-8")
+    assert "group: edge-autonomous-publish-" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert 'canonical_requested_at is not None' in publisher
+    assert "ALREADY_PUBLISHED_TODAY" in publisher
+
+
+def test_preopen_proxy_is_pinned_to_dedicated_evidence_revision():
+    workflow=Path(".github/workflows/5dr-console-preopen-acquire-proxy.yml").read_text(encoding="utf-8")
+    assert "b3edb2c8160ea9234992dac0452b5d537a4a9d1f" in workflow
+    assert "experiments.console_preopen_evidence" in workflow
+    assert "tests.test_console_preopen_evidence" in workflow
+    assert "trading" not in workflow.lower() or "trading_enabled" not in workflow.lower()

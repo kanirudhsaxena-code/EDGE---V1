@@ -83,7 +83,9 @@ def classify_stock_run(run_at:datetime)->dict:
         elif overnight_start <= local < preopen_start:
             candidate_type="OVERNIGHT_FALLBACK_CANONICAL"
         else:
-            candidate_type="DIAGNOSTIC_SNAPSHOT"
+            # G5.1: a genuine governed production run remains a valid immutable
+            # user snapshot outside the standardized benchmark windows.
+            candidate_type="USER_CANONICAL_SNAPSHOT"
 
     return {
         "target_trading_date":key_date,
@@ -105,9 +107,24 @@ def register_recommendation_governance_values(
     requested_at=requested_at or run_at
     classification=classify_stock_run(requested_at)
     candidate_type=classification["candidate_type"]
-    if completed_at and completed_at.astimezone(IST) >= classification["hard_boundary_at"]:
-        candidate_type="DIAGNOSTIC_SNAPSHOT"
     fallback_reason=(f"canonical_attempt_slot={canonical_attempt_slot}" if canonical_attempt_slot else None)
+
+    # Only a scheduled pre-open attempt is eligible to be the PREOPEN benchmark.
+    # A user-triggered run during the same clock window remains a valid production
+    # snapshot but does not compete with the scheduled benchmark population.
+    if candidate_type=="PREOPEN_CANONICAL" and not canonical_attempt_slot:
+        candidate_type="USER_CANONICAL_SNAPSHOT"
+        fallback_reason="User-triggered pre-open snapshot; retained for all-run efficacy but not benchmark selection."
+
+    # The 09:15 completion boundary protects benchmark candidates only. User
+    # snapshots after the open remain valid and must not be silently downgraded.
+    if (
+        candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}
+        and completed_at
+        and completed_at.astimezone(IST) >= classification["hard_boundary_at"]
+    ):
+        candidate_type="DIAGNOSTIC_SNAPSHOT"
+        fallback_reason="Benchmark eligibility blocked: candidate completed at/after the 09:15 IST hard boundary."
     if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"}:
         if research_fresh_at is None or (requested_at-research_fresh_at).total_seconds() > 90*60:
             candidate_type="DIAGNOSTIC_SNAPSHOT"

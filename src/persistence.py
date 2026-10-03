@@ -139,6 +139,7 @@ class CanonicalRecommendationWrite:
     research_bundle_id: Optional[str] = None
     canonical_requested_at: Optional[datetime] = None
     canonical_attempt_slot: Optional[str] = None
+    governance_trigger_type: str = "USER"
     research_fresh_at: Optional[datetime] = None
     model_version: str = "EDGE_V1"
     command_type: str = "EDGE"
@@ -231,7 +232,7 @@ class AtomicNeonPersistenceAdapter:
             ep=bundle.execution_plan; cur.execute("insert into execution_plans (recommendation_id,instrument,entry_low,entry_high,stop_price,invalidation_text,target1,target2,risk_per_unit,reward_to_t1,reward_to_t2,rr_t1,rr_t2,risk_unit_category,time_exit,option_strike,option_expiry,observed_premium,execution_quality_score,execution_quality_level,option_suitability_status,notes) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(bundle.recommendation_id,ep.instrument,ep.entry_low,ep.entry_high,ep.stop_price,ep.invalidation_text,ep.target1,ep.target2,ep.risk_per_unit,ep.reward_to_t1,ep.reward_to_t2,ep.rr_t1,ep.rr_t2,ep.risk_unit_category,ep.time_exit,ep.option_strike,ep.option_expiry,ep.observed_premium,ep.execution_quality_score,ep.execution_quality_level,ep.option_suitability_status,ep.notes))
             for idx,due_date in enumerate(bundle.checkpoint_dates,start=1): cur.execute("insert into outcome_checkpoints (recommendation_id,checkpoint_type,due_date,status,notes) values (%s,%s,%s,'DUE',%s)",(bundle.recommendation_id,f"D+{idx}",due_date,"V2 final checkpoint." if idx==5 else "V2 checkpoint."))
             cur.execute("update edge_runs set status='COMMITTED' where run_id=%s",(run_id,))
-            register_recommendation_governance_values(conn,recommendation_id=bundle.recommendation_id,ticker=bundle.ticker,run_at=bundle.run_timestamp,completed_at=datetime.now(bundle.run_timestamp.tzinfo),horizon=bundle.forecast_horizon,research_fresh_at=bundle.research_fresh_at,requested_at=bundle.canonical_requested_at,canonical_attempt_slot=bundle.canonical_attempt_slot)
+            register_recommendation_governance_values(conn,recommendation_id=bundle.recommendation_id,ticker=bundle.ticker,run_at=bundle.run_timestamp,completed_at=datetime.now(bundle.run_timestamp.tzinfo),horizon=bundle.forecast_horizon,research_fresh_at=bundle.research_fresh_at,requested_at=bundle.canonical_requested_at,canonical_attempt_slot=bundle.canonical_attempt_slot,trigger_type=bundle.governance_trigger_type)
             conn.commit(); return bundle.recommendation_id
         except Exception:
             conn.rollback(); raise

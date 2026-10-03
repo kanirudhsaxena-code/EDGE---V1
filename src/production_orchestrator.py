@@ -354,6 +354,7 @@ def build_production_candidate(
     research_bundle_id: Optional[str]=None,
     canonical_requested_at: Optional[datetime]=None,
     canonical_attempt_slot: Optional[str]=None,
+    governance_trigger_type: str="USER",
     runtime_clock: Optional[Callable[[], datetime]]=None,
 ) -> ProductionCandidateResult:
     if run_at.tzinfo is None:
@@ -489,6 +490,7 @@ def build_production_candidate(
         research_bundle_id=governed_research.bundle_id,
         canonical_requested_at=canonical_requested_at,
         canonical_attempt_slot=canonical_attempt_slot,
+        governance_trigger_type=governance_trigger_type,
         research_fresh_at=governed_research.research_fresh_at,
     )
     canonical=build_canonical_bundle(shadow,metadata)

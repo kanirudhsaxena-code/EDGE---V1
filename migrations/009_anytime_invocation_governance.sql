@@ -4,6 +4,30 @@
 -- for all-run efficacy and never compete with the standardized pre-open benchmark.
 
 ALTER TABLE edge_recommendation_governance
+ADD COLUMN IF NOT EXISTS trigger_type text,
+ADD COLUMN IF NOT EXISTS evidence_mode text,
+ADD COLUMN IF NOT EXISTS market_session_as_of date,
+ADD COLUMN IF NOT EXISTS benchmark_role text;
+
+ALTER TABLE edge_recommendation_governance
+DROP CONSTRAINT IF EXISTS edge_recommendation_governance_trigger_type_check;
+ALTER TABLE edge_recommendation_governance
+ADD CONSTRAINT edge_recommendation_governance_trigger_type_check
+CHECK (trigger_type IS NULL OR trigger_type IN ('USER','SCHEDULED'));
+
+ALTER TABLE edge_recommendation_governance
+DROP CONSTRAINT IF EXISTS edge_recommendation_governance_evidence_mode_check;
+ALTER TABLE edge_recommendation_governance
+ADD CONSTRAINT edge_recommendation_governance_evidence_mode_check
+CHECK (evidence_mode IS NULL OR evidence_mode IN ('CLOSED_SESSION','PREOPEN','LIVE_INTRADAY','SESSION_FINAL'));
+
+ALTER TABLE edge_recommendation_governance
+DROP CONSTRAINT IF EXISTS edge_recommendation_governance_benchmark_role_check;
+ALTER TABLE edge_recommendation_governance
+ADD CONSTRAINT edge_recommendation_governance_benchmark_role_check
+CHECK (benchmark_role IS NULL OR benchmark_role IN ('NONE','SESSION_PREOPEN'));
+
+ALTER TABLE edge_recommendation_governance
 DROP CONSTRAINT IF EXISTS edge_recommendation_governance_candidate_type_check;
 
 ALTER TABLE edge_recommendation_governance

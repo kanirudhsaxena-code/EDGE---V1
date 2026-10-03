@@ -16,10 +16,10 @@ No broker order/trading action exists here.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
 from enum import Enum
 from zoneinfo import ZoneInfo
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from src.assessment_context import load_assessment_context
 from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
@@ -99,31 +99,78 @@ def _recommendation_text(action: str, option_status: str) -> str:
     return action + suffix + "."
 
 
-def _live_reference_price(payloads: Mapping[str, Mapping[str, Any]]) -> Optional[float]:
-    """Extract the authenticated Upstox LTP used as the production reference price.
-
-    Daily candles remain the source for completed-session trend calculations, but a
-    fresh intraday production run must never present the previous daily close as
-    the current/reference price.
-    """
+def _quote_rows(payloads: Mapping[str, Mapping[str, Any]]):
     for source_ref,payload in payloads.items():
         if "/v3/market-quote/quotes" not in source_ref:
             continue
         data=payload.get("data") if isinstance(payload,Mapping) else None
         if not isinstance(data,Mapping):
             continue
-        candidates=[data]
-        candidates.extend(v for v in data.values() if isinstance(v,Mapping))
-        for row in candidates:
-            for key in ("last_price","ltp","last_traded_price"):
-                value=row.get(key)
-                try:
-                    price=float(value)
-                except (TypeError,ValueError):
-                    continue
-                if price>0:
-                    return price
+        yield data
+        for value in data.values():
+            if isinstance(value,Mapping):
+                yield value
+
+
+def _preopen_iep_reference_price(payloads: Mapping[str, Mapping[str, Any]]) -> Optional[float]:
+    """Extract only an auction-derived IEP for a governed pre-open canonical.
+
+    Full Market Quote V3 may expose indicative_equilibrium_price directly.  A
+    nested ltpc.iep form is also accepted for schema compatibility with the V3
+    market-data feed shape.  There is intentionally no LTP fallback here:
+    yesterday's/stale last trade must never masquerade as the pre-open auction
+    reference price.
+    """
+    for row in _quote_rows(payloads):
+        candidates=(row.get("indicative_equilibrium_price"),)
+        ltpc=row.get("ltpc")
+        if isinstance(ltpc,Mapping):
+            candidates=(*candidates,ltpc.get("iep"))
+        for value in candidates:
+            try:
+                price=float(value)
+            except (TypeError,ValueError):
+                continue
+            if price>0:
+                return price
     return None
+
+
+def _live_reference_price(
+    payloads: Mapping[str, Mapping[str, Any]],
+    *,
+    preopen_iep_required: bool=False,
+) -> Optional[float]:
+    """Extract the authenticated reference price for this production run.
+
+    Normal runs use exchange LTP. A governed pre-open canonical requires IEP and
+    deliberately refuses to substitute an older last trade.
+    """
+    if preopen_iep_required:
+        return _preopen_iep_reference_price(payloads)
+    for row in _quote_rows(payloads):
+        for key in ("last_price","ltp","last_traded_price"):
+            value=row.get(key)
+            try:
+                price=float(value)
+            except (TypeError,ValueError):
+                continue
+            if price>0:
+                return price
+    return None
+
+
+def _is_governed_preopen_time(value: datetime) -> bool:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return False
+    local=value.astimezone(ZoneInfo("Asia/Kolkata"))
+    clock=local.timetz().replace(tzinfo=None)
+    return local.weekday()<5 and time(9,10)<=clock<time(9,15)
+
+
+def _same_ist_date(left: datetime, right: datetime) -> bool:
+    ist=ZoneInfo("Asia/Kolkata")
+    return left.astimezone(ist).date()==right.astimezone(ist).date()
 
 
 def _rebase_structure_context(
@@ -307,9 +354,24 @@ def build_production_candidate(
     research_bundle_id: Optional[str]=None,
     canonical_requested_at: Optional[datetime]=None,
     canonical_attempt_slot: Optional[str]=None,
+    runtime_clock: Optional[Callable[[], datetime]]=None,
 ) -> ProductionCandidateResult:
     if run_at.tzinfo is None:
         raise ValueError("run_at must be timezone-aware")
+
+    preopen_canonical=canonical_requested_at is not None
+    if preopen_canonical:
+        if (
+            canonical_requested_at is None
+            or not _is_governed_preopen_time(canonical_requested_at)
+            or not _is_governed_preopen_time(run_at)
+            or not _same_ist_date(canonical_requested_at,run_at)
+        ):
+            return ProductionCandidateResult(
+                "BLOCKED_PREOPEN_DEADLINE",
+                ("pre-open canonical execution is outside the governed 09:10-09:15 IST window",),
+                None,None,None,
+            )
 
     market=UpstoxReadOnlyStockProvider(upstox_token,historical_cache=historical_cache)
     research=UpstoxReadOnlyResearchProvider(upstox_token)
@@ -354,10 +416,14 @@ def build_production_candidate(
     # Trend/pattern scoring intentionally uses completed daily candles. Production
     # reference price, expected zone and any execution geometry must instead use
     # the fresh authenticated quote acquired for this run.
-    live_reference_price=_live_reference_price(acquired.payloads)
+    live_reference_price=_live_reference_price(acquired.payloads,preopen_iep_required=preopen_canonical)
     if live_reference_price is None:
         return ProductionCandidateResult(
-            "BLOCKED_EVIDENCE",("fresh authenticated Upstox market quote is unavailable",),None,None,None
+            "BLOCKED_EVIDENCE",(
+                "pre-open indicative equilibrium price is unavailable from governed Upstox quote evidence"
+                if preopen_canonical
+                else "fresh authenticated Upstox market quote is unavailable",
+            ),None,None,None
         )
     if interpretation.zone_context is None:
         return ProductionCandidateResult(
@@ -476,6 +542,20 @@ def build_production_candidate(
         return ProductionCandidateResult(
             "BLOCKED_RELEASE_GOVERNANCE",release.blockers,canonical,report,None,forecast_path
         )
+
+    if preopen_canonical:
+        publication_now=(runtime_clock or (lambda: datetime.now(timezone.utc)))()
+        if (
+            publication_now.tzinfo is None
+            or publication_now.utcoffset() is None
+            or not _is_governed_preopen_time(publication_now)
+            or not _same_ist_date(canonical_requested_at,publication_now)
+        ):
+            return ProductionCandidateResult(
+                "BLOCKED_PREOPEN_DEADLINE",
+                ("pre-open canonical publication crossed the 09:15 IST hard boundary",),
+                canonical,report,None,forecast_path,
+            )
 
     evidence_rows=canonical_evidence_records(acquired.evidence)
     adapter=AtomicNeonPersistenceAdapter(

@@ -7,6 +7,8 @@ from src.canonical_governance import (
     classify_stock_run,
     canonical_key,
     last_nyse_close_before,
+    market_session_as_of,
+    user_evidence_mode,
 )
 
 
@@ -103,3 +105,16 @@ def test_g51_migration_separates_all_run_from_benchmark_membership():
     # the additive all-run view must not rewrite lifecycle membership.
     assert "UPDATE recommendation_lifecycle" not in text
     assert "SET include_in_master_metrics" not in text
+
+
+def test_anytime_evidence_modes_preserve_market_state():
+    assert user_evidence_mode(datetime(2026,10,4,21,0,tzinfo=IST))=="CLOSED_SESSION"
+    assert user_evidence_mode(datetime(2026,10,5,9,12,tzinfo=IST))=="PREOPEN"
+    assert user_evidence_mode(datetime(2026,10,5,11,0,tzinfo=IST))=="LIVE_INTRADAY"
+    assert user_evidence_mode(datetime(2026,10,5,16,0,tzinfo=IST))=="SESSION_FINAL"
+
+
+def test_market_session_as_of_does_not_fabricate_weekend_freshness():
+    assert market_session_as_of(datetime(2026,10,4,21,0,tzinfo=IST))==date(2026,10,1)
+    assert market_session_as_of(datetime(2026,10,5,8,0,tzinfo=IST))==date(2026,10,1)
+    assert market_session_as_of(datetime(2026,10,5,11,0,tzinfo=IST))==date(2026,10,5)

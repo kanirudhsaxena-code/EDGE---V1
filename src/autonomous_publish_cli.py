@@ -149,7 +149,7 @@ def main() -> int:
 
     try:
         provider=UpstoxReadOnlyStockProvider(token)
-        if run_mode == "SCHEDULED" and not is_nse_trading_day(provider,india_date):
+        if (run_mode == "SCHEDULED" or canonical_requested_at is not None) and not is_nse_trading_day(provider,india_date):
             print(json.dumps({
                 "status":"NON_TRADING_DAY",
                 "ticker":ticker,

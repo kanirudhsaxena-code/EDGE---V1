@@ -49,6 +49,7 @@ class ProductionMetadata:
     research_bundle_id: Optional[str] = None
     canonical_requested_at: Optional[datetime] = None
     canonical_attempt_slot: Optional[str] = None
+    governance_trigger_type: str = "USER"
     research_fresh_at: Optional[datetime] = None
 
 
@@ -167,5 +168,6 @@ def build_canonical_bundle(
         research_bundle_id=metadata.research_bundle_id,
         canonical_requested_at=metadata.canonical_requested_at,
         canonical_attempt_slot=metadata.canonical_attempt_slot,
+        governance_trigger_type=metadata.governance_trigger_type,
         research_fresh_at=metadata.research_fresh_at,
     )

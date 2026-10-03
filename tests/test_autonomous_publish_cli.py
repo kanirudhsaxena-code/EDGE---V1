@@ -22,7 +22,7 @@ def test_manual_run_is_not_blocked_by_close_or_non_trading_day_gate():
     text=Path("src/autonomous_publish_cli.py").read_text(encoding="utf-8")
     assert 'run_mode=os.getenv("EDGE_RUN_MODE","MANUAL")' in text
     assert 'if run_mode == "SCHEDULED" and (' in text
-    assert 'if run_mode == "SCHEDULED" and not is_nse_trading_day' in text
+    assert 'if (run_mode == "SCHEDULED" or canonical_requested_at is not None) and not is_nse_trading_day' in text
     assert 'if existing and (run_mode == "SCHEDULED" or canonical_requested_at is not None)' in text
 
 
@@ -41,3 +41,20 @@ def test_preopen_proxy_is_pinned_to_dedicated_evidence_revision():
     assert "experiments.console_preopen_evidence" in workflow
     assert "tests.test_console_preopen_evidence" in workflow
     assert "trading" not in workflow.lower() or "trading_enabled" not in workflow.lower()
+
+
+def test_stock_preopen_has_runtime_and_publication_hard_deadlines():
+    text=Path("src/production_orchestrator.py").read_text(encoding="utf-8")
+    assert "BLOCKED_PREOPEN_DEADLINE" in text
+    assert "pre-open canonical execution is outside the governed 09:10-09:15 IST window" in text
+    assert "pre-open canonical publication crossed the 09:15 IST hard boundary" in text
+    assert "publication_now=(runtime_clock or (lambda: datetime.now(timezone.utc)))()" in text
+    assert "_same_ist_date(canonical_requested_at,publication_now)" in text
+
+
+def test_stock_preopen_requires_auction_price_and_no_ltp_fallback():
+    text=Path("src/production_orchestrator.py").read_text(encoding="utf-8")
+    assert "preopen_iep_required=preopen_canonical" in text
+    assert "indicative_equilibrium_price" in text
+    assert 'ltpc.get("iep")' in text
+    assert "pre-open indicative equilibrium price is unavailable" in text

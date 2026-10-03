@@ -46,6 +46,43 @@ def next_nse_day(day:date)->date:
     raise ValueError("next NSE trading day not found")
 
 
+def previous_nse_day(day:date)->date:
+    cursor=day
+    for _ in range(370):
+        cursor-=timedelta(days=1)
+        if is_nse_day(cursor):
+            return cursor
+    raise ValueError("previous NSE trading day not found")
+
+
+def user_evidence_mode(run_at:datetime)->str:
+    if run_at.tzinfo is None:
+        raise ValueError("run_at must be timezone-aware")
+    local=run_at.astimezone(IST)
+    day=local.date()
+    clock=local.time().replace(tzinfo=None)
+    if not is_nse_day(day):
+        return "CLOSED_SESSION"
+    if PREOPEN_START <= clock < HARD_BOUNDARY:
+        return "PREOPEN"
+    if HARD_BOUNDARY <= clock < time(15,30):
+        return "LIVE_INTRADAY"
+    if clock >= time(15,30):
+        return "SESSION_FINAL"
+    return "CLOSED_SESSION"
+
+
+def market_session_as_of(run_at:datetime)->date:
+    if run_at.tzinfo is None:
+        raise ValueError("run_at must be timezone-aware")
+    local=run_at.astimezone(IST)
+    day=local.date()
+    clock=local.time().replace(tzinfo=None)
+    if is_nse_day(day) and clock >= HARD_BOUNDARY:
+        return day
+    return previous_nse_day(day)
+
+
 def _is_nyse_day(day:date)->bool:
     return day.weekday()<5 and day not in NYSE_HOLIDAYS_2026
 
@@ -136,8 +173,9 @@ def register_recommendation_governance_values(
         INSERT INTO edge_recommendation_governance(
           recommendation_id,canonical_key,ticker,target_trading_date,forecast_horizon,
           candidate_type,requested_at,completed_at,ordinary_cutoff_at,hard_boundary_at,
-          research_fresh_at,fallback_reason
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+          research_fresh_at,fallback_reason,trigger_type,evidence_mode,
+          market_session_as_of,benchmark_role
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (recommendation_id) DO NOTHING
         """,
         (
@@ -150,6 +188,10 @@ def register_recommendation_governance_values(
                 + ("Overnight fallback requires no newer material governed research before selection."
                    if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else "")
             ) or None,
+            "SCHEDULED" if candidate_type=="PREOPEN_CANONICAL" else "USER",
+            "PREOPEN" if candidate_type=="PREOPEN_CANONICAL" else user_evidence_mode(requested_at),
+            market_session_as_of(requested_at),
+            "SESSION_PREOPEN" if candidate_type=="PREOPEN_CANONICAL" else "NONE",
         ),
     )
     return {**classification,"candidate_type":candidate_type,"canonical_key":key}

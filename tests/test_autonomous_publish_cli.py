@@ -37,7 +37,7 @@ def test_preopen_retry_publication_is_serialized_and_idempotent():
 
 def test_preopen_proxy_is_pinned_to_dedicated_evidence_revision():
     workflow=Path(".github/workflows/5dr-console-preopen-acquire-proxy.yml").read_text(encoding="utf-8")
-    assert "b3edb2c8160ea9234992dac0452b5d537a4a9d1f" in workflow
+    assert "08ac8a6ba2101e3bbf1d2dc70601086de18b6a93" in workflow
     assert "experiments.console_preopen_evidence" in workflow
     assert "tests.test_console_preopen_evidence" in workflow
     assert "trading" not in workflow.lower() or "trading_enabled" not in workflow.lower()

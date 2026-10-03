@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 env:
-  FIVEDR_REF: 4e255197dac50314af58b2613a2bac369993b6f1
+  FIVEDR_REF: b3edb2c8160ea9234992dac0452b5d537a4a9d1f
 
 jobs:
   execute:

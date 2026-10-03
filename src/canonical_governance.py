@@ -139,19 +139,31 @@ def canonical_key(ticker:str,target:date,horizon:str)->str:
 def register_recommendation_governance_values(
     conn,*,recommendation_id:str,ticker:str,run_at:datetime,completed_at:datetime,
     horizon:str,research_fresh_at:datetime|None=None,requested_at:datetime|None=None,
-    canonical_attempt_slot:str|None=None,
+    canonical_attempt_slot:str|None=None,trigger_type:str="USER",
 )->dict:
     requested_at=requested_at or run_at
     classification=classify_stock_run(requested_at)
     candidate_type=classification["candidate_type"]
+    normalized_trigger=str(trigger_type or "USER").strip().upper()
+    if normalized_trigger not in {"USER","SCHEDULED"}:
+        raise ValueError("trigger_type must be USER or SCHEDULED")
+    # A governed pre-open slot is scheduled even though GitHub receives it through
+    # workflow_dispatch from the Cloudflare clock authority.
+    if canonical_attempt_slot:
+        normalized_trigger="SCHEDULED"
     fallback_reason=(f"canonical_attempt_slot={canonical_attempt_slot}" if canonical_attempt_slot else None)
 
-    # Only a scheduled pre-open attempt is eligible to be the PREOPEN benchmark.
-    # A user-triggered run during the same clock window remains a valid production
-    # snapshot but does not compete with the scheduled benchmark population.
-    if candidate_type=="PREOPEN_CANONICAL" and not canonical_attempt_slot:
+    # Clock-window classification and benchmark eligibility are separate concerns.
+    # User-triggered runs are always retained as immutable all-run snapshots, even
+    # if they happen during the pre-open or overnight-fallback windows. Only a
+    # scheduled governed run may compete with the standardized benchmark.
+    if candidate_type in {"PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL"} and normalized_trigger!="SCHEDULED":
+        original_candidate=candidate_type
         candidate_type="USER_CANONICAL_SNAPSHOT"
-        fallback_reason="User-triggered pre-open snapshot; retained for all-run efficacy but not benchmark selection."
+        fallback_reason=(
+            f"User-triggered {original_candidate.lower()} window snapshot; "
+            "retained for all-run efficacy but excluded from benchmark selection."
+        )
 
     # The 09:15 completion boundary protects benchmark candidates only. User
     # snapshots after the open remain valid and must not be silently downgraded.
@@ -188,7 +200,7 @@ def register_recommendation_governance_values(
                 + ("Overnight fallback requires no newer material governed research before selection."
                    if candidate_type=="OVERNIGHT_FALLBACK_CANONICAL" else "")
             ) or None,
-            "SCHEDULED" if candidate_type=="PREOPEN_CANONICAL" else "USER",
+            normalized_trigger,
             "PREOPEN" if candidate_type=="PREOPEN_CANONICAL" else user_evidence_mode(requested_at),
             market_session_as_of(requested_at),
             "SESSION_PREOPEN" if candidate_type=="PREOPEN_CANONICAL" else "NONE",
@@ -199,7 +211,7 @@ def register_recommendation_governance_values(
 
 def register_recommendation_governance(
     conn,recommendation_id:str,*,requested_at:datetime|None=None,
-    canonical_attempt_slot:str|None=None,
+    canonical_attempt_slot:str|None=None,trigger_type:str="USER",
 )->dict:
     """Compatibility loader for callers that only hold recommendation_id."""
     cur=conn.cursor()
@@ -223,7 +235,7 @@ def register_recommendation_governance(
         conn,recommendation_id=recommendation_id,ticker=ticker,run_at=run_at,
         completed_at=completed_at or run_at,horizon=horizon,
         research_fresh_at=research_fresh_at,requested_at=requested_at,
-        canonical_attempt_slot=canonical_attempt_slot,
+        canonical_attempt_slot=canonical_attempt_slot,trigger_type=trigger_type,
     )
 
 def _fallback_research_still_current(cur,ticker:str,recommendation_id:str,run_at:datetime,cutoff:datetime)->bool:

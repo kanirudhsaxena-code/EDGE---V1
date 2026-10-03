@@ -99,5 +99,7 @@ def test_g51_migration_separates_all_run_from_benchmark_membership():
     assert "USER_CANONICAL_SNAPSHOT" in text
     assert "v_edge_all_run_assessment" in text
     assert "v_edge_stock_all_run_assessment" in text
-    # Benchmark membership remains controlled by the existing selection flag.
-    assert "include_in_master_metrics" not in text
+    # Benchmark membership remains controlled by the existing selection path;
+    # the additive all-run view must not rewrite lifecycle membership.
+    assert "UPDATE recommendation_lifecycle" not in text
+    assert "SET include_in_master_metrics" not in text

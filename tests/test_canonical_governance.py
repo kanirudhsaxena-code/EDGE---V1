@@ -30,10 +30,10 @@ def test_preopen_0914_is_canonical_candidate():
     assert out["candidate_type"]=="PREOPEN_CANONICAL"
 
 
-def test_0915_normal_open_is_not_ordinary_preopen_candidate():
+def test_0915_normal_open_is_valid_user_canonical_snapshot():
     run=datetime(2026,9,22,9,15,tzinfo=IST)
     out=classify_stock_run(run)
-    assert out["candidate_type"]=="DIAGNOSTIC_SNAPSHOT"
+    assert out["candidate_type"]=="USER_CANONICAL_SNAPSHOT"
 
 
 def test_overnight_after_us_close_is_fallback_candidate():
@@ -43,17 +43,24 @@ def test_overnight_after_us_close_is_fallback_candidate():
     assert out["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL"
 
 
-def test_previous_day_post_close_is_not_overnight_fallback():
+def test_previous_day_post_close_is_valid_user_snapshot_for_next_session():
     run=datetime(2026,9,21,16,0,tzinfo=IST)
     out=classify_stock_run(run)
     assert out["target_trading_date"]==date(2026,9,22)
-    assert out["candidate_type"]=="DIAGNOSTIC_SNAPSHOT"
+    assert out["candidate_type"]=="USER_CANONICAL_SNAPSHOT"
 
 
-def test_intraday_after_open_is_diagnostic_only():
+def test_intraday_after_open_is_valid_user_canonical_snapshot():
     run=datetime(2026,9,22,10,30,tzinfo=IST)
     out=classify_stock_run(run)
-    assert out["candidate_type"]=="DIAGNOSTIC_SNAPSHOT"
+    assert out["candidate_type"]=="USER_CANONICAL_SNAPSHOT"
+
+
+def test_weekend_after_last_us_close_remains_overnight_fallback_candidate():
+    run=datetime(2026,10,4,21,0,tzinfo=IST)
+    out=classify_stock_run(run)
+    assert out["target_trading_date"]==date(2026,10,5)
+    assert out["candidate_type"]=="OVERNIGHT_FALLBACK_CANONICAL"
 
 
 def test_canonical_key_includes_ticker_target_and_horizon():
@@ -85,3 +92,12 @@ def test_workflow_finalizes_after_normal_open_without_recomputing_candidate():
     text=Path(".github/workflows/canonical-selection.yml").read_text(encoding="utf-8")
     assert "cron: '50 3 * * 1-5'" in text
     assert "python -m src.canonical_governance_cli" in text
+
+
+def test_g51_migration_separates_all_run_from_benchmark_membership():
+    text=Path("migrations/009_anytime_invocation_governance.sql").read_text(encoding="utf-8")
+    assert "USER_CANONICAL_SNAPSHOT" in text
+    assert "v_edge_all_run_assessment" in text
+    assert "v_edge_stock_all_run_assessment" in text
+    # Benchmark membership remains controlled by the existing selection flag.
+    assert "include_in_master_metrics" not in text

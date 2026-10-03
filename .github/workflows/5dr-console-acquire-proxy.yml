@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FIVEDR_REF: ad2afc81e3fcaee86e9f647abcce1ec8d138ceeb
+  FIVEDR_REF: b3edb2c8160ea9234992dac0452b5d537a4a9d1f
 
 jobs:
   acquire:

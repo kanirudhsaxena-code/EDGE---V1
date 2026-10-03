@@ -1,0 +1,82 @@
+name: G5.1 Governance Schema Acceptance
+
+on:
+  push:
+    branches:
+      - g5-1-anytime-canonical-governance
+    paths:
+      - 'migrations/009_anytime_invocation_governance.sql'
+      - '.github/workflows/g5-1-governance-schema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g5-1-governance-schema
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply additive G5.1 governance schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/009_anytime_invocation_governance.sql
+      - name: Verify provenance columns, classifications and efficacy views
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            missing integer;
+          BEGIN
+            SELECT count(*) INTO missing
+              FROM (VALUES
+                ('trigger_type'),('evidence_mode'),('market_session_as_of'),('benchmark_role')
+              ) AS wanted(name)
+             WHERE NOT EXISTS (
+               SELECT 1 FROM information_schema.columns c
+                WHERE c.table_schema=current_schema()
+                  AND c.table_name='edge_recommendation_governance'
+                  AND c.column_name=wanted.name
+             );
+            IF missing <> 0 THEN
+              RAISE EXCEPTION 'G5.1 provenance columns missing: %', missing;
+            END IF;
+
+            IF to_regclass(current_schema()||'.v_edge_all_run_assessment') IS NULL THEN
+              RAISE EXCEPTION 'v_edge_all_run_assessment missing';
+            END IF;
+            IF to_regclass(current_schema()||'.v_edge_stock_all_run_assessment') IS NULL THEN
+              RAISE EXCEPTION 'v_edge_stock_all_run_assessment missing';
+            END IF;
+          END $$;
+
+          SELECT
+            'G5_1_SCHEMA_PASS' AS status,
+            count(*) AS governance_rows,
+            count(*) FILTER (WHERE candidate_type='USER_CANONICAL_SNAPSHOT') AS user_snapshots
+          FROM edge_recommendation_governance;
+
+          SELECT * FROM v_edge_all_run_assessment;
+          SELECT * FROM v_edge_stock_all_run_assessment ORDER BY ticker LIMIT 20;
+          SQL
+      - name: Prove benchmark membership remains separately governed
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            select count(*) as selected_benchmark_members
+              from recommendation_lifecycle
+             where include_in_master_metrics is true;"

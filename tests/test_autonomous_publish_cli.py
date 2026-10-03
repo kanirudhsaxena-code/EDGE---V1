@@ -35,12 +35,17 @@ def test_preopen_retry_publication_is_serialized_and_idempotent():
     assert "ALREADY_PUBLISHED_TODAY" in publisher
 
 
-def test_preopen_proxy_is_pinned_to_dedicated_evidence_revision():
-    workflow=Path(".github/workflows/5dr-console-preopen-acquire-proxy.yml").read_text(encoding="utf-8")
-    assert "08ac8a6ba2101e3bbf1d2dc70601086de18b6a93" in workflow
-    assert "experiments.console_preopen_evidence" in workflow
-    assert "tests.test_console_preopen_evidence" in workflow
-    assert "trading" not in workflow.lower() or "trading_enabled" not in workflow.lower()
+def test_5dr_console_proxies_are_pinned_to_g51_anytime_capable_revision():
+    expected="74aa9ecdd107e4b0142e8208e42db78ed6b11de6"
+    normal=Path(".github/workflows/5dr-console-acquire-proxy.yml").read_text(encoding="utf-8")
+    execute=Path(".github/workflows/5dr-console-execute-proxy.yml").read_text(encoding="utf-8")
+    preopen=Path(".github/workflows/5dr-console-preopen-acquire-proxy.yml").read_text(encoding="utf-8")
+    assert expected in normal
+    assert expected in execute
+    assert expected in preopen
+    assert "experiments.console_preopen_evidence" in preopen
+    assert "tests.test_console_preopen_evidence" in preopen
+    assert "trading" not in preopen.lower() or "trading_enabled" not in preopen.lower()
 
 
 def test_stock_preopen_has_runtime_and_publication_hard_deadlines():

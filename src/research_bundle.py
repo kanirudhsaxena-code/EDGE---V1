@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Mapping, Optional, Sequence
 
-from src.frozen_engine import ComponentInput
+from src.frozen_engine import ComponentInput, COMPONENT_WEIGHTS
 from src.shadow_pipeline import AnalystInterpretation
 from src.autonomous_evidence_acquisition import AcquiredEvidenceBundle
 from src.evidence_gate import EvidenceItem, validate_fresh_evidence
@@ -168,7 +168,7 @@ def validate_research_bundle_payload(
 
     missing=sorted(RESEARCH_SENSITIVE_COMPONENTS-verified_components)
     if missing:
-        warnings.append("research-sensitive components without independent VERIFIED support: "+", ".join(missing))
+        blockers.append("mandatory research-sensitive components without independent VERIFIED support: "+", ".join(missing))
 
     return ResearchBundleGate(not blockers,tuple(blockers),tuple(warnings))
 
@@ -425,9 +425,19 @@ def apply_independent_research_validation(
     if material_blockers:
         raise ResearchReconciliationError(material_blockers)
 
+    # Reconciliation changes the authoritative component-availability set.
+    # Recompute the frozen completeness input from the final verified rows
+    # before Market Trust/probabilities/BOT are evaluated downstream.
+    final_completeness=sum(
+        COMPONENT_WEIGHTS.get(row.component.strip().upper(),0.0)
+        for row in rows
+        if row.verified and row.raw_score is not None
+    )
+
     return replace(
         interpretation,
         component_scores=tuple(rows),
+        completeness_score=float(final_completeness),
         component_summaries=summaries,
     )
 

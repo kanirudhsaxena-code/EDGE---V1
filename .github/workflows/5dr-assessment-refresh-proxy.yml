@@ -21,29 +21,49 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FIVEDR_HANDOFF_URL: https://raw.githubusercontent.com/kanirudhsaxena-code/5DR-V2/state/assessment-handoff/runtime/5dr-assessment-handoff.json
-  FIVEDR_HANDOFF_MAX_AGE_SECONDS: '7200'
+  # Pin the canonical 5DR implementation used to build the authoritative
+  # database-derived assessment. Do not depend on an eventually-scheduled
+  # state-branch refresh for a production request.
+  FIVEDR_REF: fe7254df67f898e78f23a55fc30e366abf596853
 
 jobs:
   refresh:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
+      - name: Checkout pinned canonical 5DR assessment producer
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          git init fivedr
+          git -C fivedr remote add origin https://github.com/kanirudhsaxena-code/5DR-V2.git
+          git -C fivedr fetch --depth 1 origin "$FIVEDR_REF"
+          git -C fivedr checkout --detach FETCH_HEAD
+          test "$(git -C fivedr rev-parse HEAD)" = "$FIVEDR_REF"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Fetch authoritative 5DR assessment state
+      - name: Install authoritative assessment database driver
+        run: |
+          python -m pip install --disable-pip-version-check 'psycopg2-binary>=2.9,<3'
+          python -m py_compile fivedr/src/assessment_handoff_cli.py
+
+      - name: Build fresh authoritative 5DR assessment from production database
+        working-directory: fivedr
         run: |
           set -euo pipefail
-          curl --location --fail-with-body --silent --show-error             -H "Accept: application/json"             -H "Cache-Control: no-cache"             "${FIVEDR_HANDOFF_URL}?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"             -o assessment-handoff.json
+          python -m src.assessment_handoff_cli
           test -s assessment-handoff.json
 
-      - name: Validate authoritative assessment contract
+      - name: Validate authoritative assessment contract and freshness
+        working-directory: fivedr
         run: |
           python - <<'PY'
           import json
-          import os
           from datetime import datetime, timezone
 
           data=json.load(open('assessment-handoff.json',encoding='utf-8'))
@@ -51,12 +71,10 @@ jobs:
           generated=str(data.get('generated_at') or '')
           generated_at=datetime.fromisoformat(generated.replace('Z','+00:00'))
           age=(datetime.now(timezone.utc)-generated_at).total_seconds()
-          max_age=float(os.environ['FIVEDR_HANDOFF_MAX_AGE_SECONDS'])
-          assert -300 <= age <= max_age, {
+          assert -300 <= age <= 300, {
               'generated_at':generated,
               'age_seconds':age,
-              'max_age_seconds':max_age,
-              'blocker':'AUTHORITATIVE_5DR_HANDOFF_STALE',
+              'blocker':'AUTHORITATIVE_5DR_HANDOFF_NOT_FRESHLY_REBUILT',
           }
 
           assessment=data.get('assessment') or {}
@@ -73,11 +91,12 @@ jobs:
           assert len(ledger)==int(metrics.get('all_recommendations_count',-1)), metrics
 
           json.dump(assessment,open('assessment-import.json','w',encoding='utf-8'),separators=(',',':'))
-          print('ASSESSMENT_REFRESH_PROXY_CONTRACT=PASS')
+          print('ASSESSMENT_REFRESH_PROXY_REBUILD=PASS')
           print(f'ASSESSMENT_HANDOFF_AGE_SECONDS={age:.0f}')
           PY
 
       - name: Import fresh assessment into governed Console state
+        working-directory: fivedr
         env:
           CONSOLE_URL: ${{ inputs.console_url }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
@@ -86,10 +105,17 @@ jobs:
           set -euo pipefail
           ENDPOINT="$CONSOLE_URL/api/5dr/assessment-import"
           post_auth() {
-            curl --location --fail-with-body --silent --show-error               -X POST               -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"               -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"               -H "Content-Type: application/json"               --data-binary @assessment-import.json "$ENDPOINT"
+            curl --location --fail-with-body --silent --show-error \
+              -X POST \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H "Content-Type: application/json" \
+              --data-binary @assessment-import.json "$ENDPOINT"
           }
           post_public() {
-            curl --location --fail-with-body --silent --show-error               -X POST -H "Content-Type: application/json"               --data-binary @assessment-import.json "$ENDPOINT"
+            curl --location --fail-with-body --silent --show-error \
+              -X POST -H "Content-Type: application/json" \
+              --data-binary @assessment-import.json "$ENDPOINT"
           }
           if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
             post_auth || post_public
@@ -103,7 +129,7 @@ jobs:
         with:
           name: 5dr-assessment-refresh-${{ inputs.request_id }}
           path: |
-            assessment-handoff.json
-            assessment-import.json
+            fivedr/assessment-handoff.json
+            fivedr/assessment-import.json
           retention-days: 30
           if-no-files-found: error

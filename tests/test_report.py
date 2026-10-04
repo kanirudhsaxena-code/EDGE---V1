@@ -6,6 +6,7 @@ from src.persistence import (
     ExecutionPlanWrite, MarketTrustWrite,
 )
 from src.report import render_standard_edge_report
+from src.forecast_path import ForecastPathRow, ForecastPathWrite
 
 
 def bundle():
@@ -38,6 +39,58 @@ def bundle():
             option_suitability_status="NO OPTION TRADE",
         ),
         checkpoint_dates=(date(2026,9,21),date(2026,9,22),date(2026,9,23),date(2026,9,24),date(2026,9,25)),
+    )
+
+
+def summaries():
+    return {
+        "BUSINESS_FUNDAMENTALS":("POSITIVE","Verified income-statement growth evidence produced governed fundamentals score +1."),
+        "VALUATION":("NEGATIVE","Verified company-versus-sector valuation ratios produced governed valuation score -1."),
+        "PRICE_STRUCTURE":("NEGATIVE","Price structure is negative under the frozen trend rules."),
+        "SPECIFIC_CHART_PATTERN":("TREND_CONTINUATION","Verified daily candles classify the active pattern as TREND_CONTINUATION."),
+        "PV_PVPO":("NEUTRAL","Price-volume confirmation produced governed score +0."),
+        "RELATIVE_STRENGTH":("NEGATIVE","Relative performance versus Nifty 50 produced governed score -1."),
+        "INSTITUTIONAL_BEHAVIOUR":("NEGATIVE","Verified FII / mutual-fund / DII holding changes produced governed institutional score -1."),
+        "NEWS_EVENTS_CATALYSTS":("NEUTRAL","Verified recent-news catalyst classification produced governed score +0."),
+        "EVENT_SHOCK":("NO MATERIAL SHOCK FLAG","Verified event-risk screen produced governed score +0."),
+    }
+
+
+def forecast_path():
+    dates=(date(2026,9,18),date(2026,9,21),date(2026,9,22),date(2026,9,23),date(2026,9,24))
+    labels=("D","D+1","D+2","D+3","D+4")
+    rows=tuple(
+        ForecastPathRow(
+            horizon_label=label,
+            target_trading_date=target,
+            direction="BASE",
+            bull_probability=20.0,
+            base_probability=60.0,
+            bear_probability=20.0,
+            expected_centre=302.3,
+            outer_expected_zone_low=297.15,
+            outer_expected_zone_high=312.105,
+            evidence_basis=f"governed evidence {label}",
+            regime_context="TRANSITION",
+            verification_state="VERIFIED",
+            lineage={"row":label},
+        )
+        for label,target in zip(labels,dates)
+    )
+    return ForecastPathWrite(
+        recommendation_id="EDGE-LTF-20260918-01",
+        source_run_id="EDGE-LTF-20260918-01",
+        issued_at=datetime(2026,9,18,6,0,tzinfo=timezone.utc),
+        rows=rows,
+    )
+
+
+def render(*, component_summaries=None):
+    return render_standard_edge_report(
+        bundle(),
+        assessment(),
+        component_summaries=summaries() if component_summaries is None else component_summaries,
+        forecast_path=forecast_path(),
     )
 
 
@@ -75,7 +128,7 @@ def assessment():
 
 
 def test_standard_report_matches_mandatory_efficacy_v2_four_table_order():
-    text=render_standard_edge_report(bundle(),assessment())
+    text=render()
     assert text.count("\n\n")==3
     i1=text.index("| EDGE MASTER ASSESSMENT |")
     i2=text.index("| ACTIVE CALLS |")
@@ -85,7 +138,7 @@ def test_standard_report_matches_mandatory_efficacy_v2_four_table_order():
 
 
 def test_assessment_section_surfaces_official_and_provisional_efficacy():
-    text=render_standard_edge_report(bundle(),assessment())
+    text=render()
     assert "| Official Scorable Sample | 0 |" in text
     assert "| Recommendation Hit Rate | N/A |" in text
     assert "| Provisional Forecast Accuracy | 66.7% | 2 hit / 1 miss; 3 scorable checkpoints |" in text
@@ -93,14 +146,14 @@ def test_assessment_section_surfaces_official_and_provisional_efficacy():
 
 
 def test_active_calls_precedes_new_current_stock_outcome():
-    text=render_standard_edge_report(bundle(),assessment())
+    text=render()
     assert "EDGE-LTF-20260918-065954-AUTO" in text
     assert "EDGE-LTF-20260918-01" in text
     assert text.index("EDGE-LTF-20260918-065954-AUTO") < text.index("EDGE-LTF-20260918-01")
 
 
 def test_report_has_no_narrative_outside_tables():
-    text=render_standard_edge_report(bundle(),assessment())
+    text=render()
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -108,25 +161,35 @@ def test_report_has_no_narrative_outside_tables():
 
 
 def test_no_trade_plan_can_leave_entry_stop_targets_na():
-    text=render_standard_edge_report(bundle(),assessment())
+    text=render()
     assert "| Entry | N/A | N/A |" in text
     assert "| Options Contract | N/A | NO OPTION TRADE |" in text
 
 
 def test_verified_component_interpretations_are_meaningful():
-    summaries={
-        "Business & Fundamentals":("POSITIVE","Verified income-statement growth evidence produced governed fundamentals score +1."),
-        "Valuation":("NEGATIVE","Verified company-versus-sector valuation ratios produced governed valuation score -1."),
-        "Price Structure":("NEGATIVE","Price structure is negative under the frozen trend rules."),
-        "Specific Chart Pattern":("TREND_CONTINUATION","Verified daily candles classify the active pattern as TREND_CONTINUATION."),
-        "PV/PVPO":("NEUTRAL","Price-volume confirmation produced governed score +0."),
-        "Relative Strength":("NEGATIVE","Relative performance versus Nifty 50 produced governed score -1."),
-        "Institutional Behaviour":("NEGATIVE","Verified FII / mutual-fund / DII holding changes produced governed institutional score -1."),
-        "News, Events & Catalysts (10–15D)":("NEUTRAL","Verified recent-news catalyst classification produced governed score +0."),
-        "Event-Shock Risk":("NO MATERIAL SHOCK FLAG","Verified event-risk screen produced governed score +0."),
-    }
-    text=render_standard_edge_report(bundle(),assessment(),component_summaries=summaries)
+    text=render(component_summaries=summaries())
     assert "Component evidence retained in immutable audit record" not in text
     assert "Verified income-statement growth evidence" in text
     assert "Relative performance versus Nifty 50" in text
     assert text.index("| EDGE MASTER ASSESSMENT |") < text.index("| DRILL-DOWN |")
+
+
+def test_standard_report_visibly_contains_exact_dd4_regime_and_evidence():
+    text=render()
+    for label in ("D","D+1","D+2","D+3","D+4"):
+        assert f"| Forecast {label} ·" in text
+        assert f"governed evidence {label}" in text
+    assert "Regime: TRANSITION" in text
+    assert "Verification: VERIFIED" in text
+
+
+def test_verified_component_without_persisted_semantics_fails_closed():
+    bad=summaries()
+    bad.pop("PRICE_STRUCTURE")
+    try:
+        render(component_summaries=bad)
+    except ValueError as exc:
+        assert "PRICE_STRUCTURE" in str(exc)
+        assert "missing persisted evidence-grounded narrative" in str(exc)
+    else:
+        raise AssertionError("VERIFIED component without persisted semantics must fail closed")

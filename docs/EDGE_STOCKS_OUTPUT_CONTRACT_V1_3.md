@@ -105,3 +105,16 @@ Implementation checkpoints:
 - EDGE V1 semantic persistence fix: `8d9c31789472e9176f2b986eb0cf6d8e0c3a86d0`
 - EDGE Console V1.3 semantic enforcement: `523bffa6e65ae40e9e365777147753d1234f5014`
 - Production semantic smoke: run `35379877461`
+
+
+## G5 visible-path corrective revision — 4 Oct 2026
+
+This is an additive presentation/read-model revision to V1.3. The wire contract remains `EDGE_STOCKS_V1_3`; frozen EDGE V1 analytics are unchanged.
+
+Within **CURRENT STOCK OUTCOME**, every new standard production result must visibly render the exact immutable G5 forecast path for D, D+1, D+2, D+3 and D+4. Each row must show target trading date, dominant direction, Bull/Base/Bear probabilities, expected price zone, regime context, evidence basis and verification state.
+
+The path is read directly from `EDGE_STOCK_FORECAST_PATH_V1`. No renderer may reconstruct, interpolate, decay, rescore or infer a missing horizon row. Missing/incomplete/misordered path data is a publication blocker.
+
+For **DRILL-DOWN**, canonical component keys are authoritative for evidence-narrative lookup. A VERIFIED component must carry persisted `key_outcome` and `interpretation`; score-derived or boilerplate fallback prose is prohibited. Missing VERIFIED semantics fail closed.
+
+This revision does not change scoring, DES, Market Trust, probabilities, BOT, Decision Ladder, Event-Shock methodology, execution logic, efficacy, canonical selection or Learning Lab behavior.

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from src.evidence_gate import EvidenceItem
 from src.frozen_engine import ComponentInput
 from src.research_bundle import (
     GovernedResearchBundle,
@@ -76,6 +77,27 @@ def governed(verified=("NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS")):
     )
 
 
+def test_incomplete_research_sensitive_coverage_is_blocked():
+    gate=validate_research_bundle_payload(payload(),ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is False
+    assert any("mandatory research-sensitive components" in b for b in gate.blockers)
+    assert any("INSTITUTIONAL_BEHAVIOUR" in b for b in gate.blockers)
+    assert any("VALUATION" in b for b in gate.blockers)
+    assert any("EVENT_SHOCK" in b for b in gate.blockers)
+
+
+def test_complete_five_dimension_research_coverage_is_ready():
+    p=payload()
+    p["claims"].extend([
+        {"claim_id":"c3","evidence_category":"VALUATION","statement":"Valuation independently checked.","materiality":"MODERATE","direction":"NEGATIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c4","evidence_category":"INSTITUTIONAL_BEHAVIOUR","statement":"Institutional behaviour independently checked.","materiality":"MODERATE","direction":"POSITIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c5","evidence_category":"EVENT_SHOCK","statement":"No material event shock identified.","materiality":"HIGH","direction":"NEUTRAL","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+    ])
+    gate=validate_research_bundle_payload(p,ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is True
+    assert not gate.blockers
+
+
 def test_bundle_requires_chatgpt_web_authority():
     p=payload()
     p["retrieval_providers"]=["EXA","UPSTOX"]
@@ -109,6 +131,7 @@ def test_missing_independent_component_validation_excludes_provider_score():
     assert by_name["VALUATION"].verified is False
     assert by_name["VALUATION"].raw_score is None
     assert "fresh independent ChatGPT web validation was unavailable" in out.component_summaries["VALUATION"][1]
+    assert out.completeness_score == 78.0
 
 
 def test_independently_validated_component_keeps_frozen_provider_score():
@@ -258,3 +281,27 @@ def test_directional_research_does_not_falsely_validate_neutral_provider():
     assert row.raw_score is None
     assert row.verified is False
     assert out.component_summaries["NEWS_EVENTS_CATALYSTS"][0]=="NOT VERIFIED"
+
+
+def test_post_reconciliation_evidence_quality_uses_final_evidence_set():
+    evidence=tuple(
+        EvidenceItem(name,"TITAN",RUN_AT,f"ref:{name}",verified)
+        for name,verified in (
+            ("PRICE_STRUCTURE",True),
+            ("PV_PVPO",True),
+            ("SPECIFIC_CHART_PATTERN",True),
+            ("NEWS_EVENTS_CATALYSTS",True),
+            ("BUSINESS_FUNDAMENTALS",True),
+            ("INSTITUTIONAL_BEHAVIOUR",False),
+            ("RELATIVE_STRENGTH",True),
+            ("VALUATION",False),
+            ("EVENT_SHOCK",False),
+        )
+    )
+    out=apply_independent_research_validation(
+        interpretation(),governed(),evidence=evidence
+    )
+    # Reconciliation excludes the unsupported mandatory components first.
+    # Evidence quality is then recomputed from the surviving governed set.
+    assert out.completeness_score == 78.0
+    assert out.evidence_quality_score == 100.0

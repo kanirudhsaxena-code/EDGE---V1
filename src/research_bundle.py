@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Mapping, Optional, Sequence
 
-from src.frozen_engine import ComponentInput
+from src.frozen_engine import ComponentInput, COMPONENT_WEIGHTS
 from src.shadow_pipeline import AnalystInterpretation
 from src.autonomous_evidence_acquisition import AcquiredEvidenceBundle
 from src.evidence_gate import EvidenceItem, validate_fresh_evidence
@@ -168,7 +168,7 @@ def validate_research_bundle_payload(
 
     missing=sorted(RESEARCH_SENSITIVE_COMPONENTS-verified_components)
     if missing:
-        warnings.append("research-sensitive components without independent VERIFIED support: "+", ".join(missing))
+        blockers.append("mandatory research-sensitive components without independent VERIFIED support: "+", ".join(missing))
 
     return ResearchBundleGate(not blockers,tuple(blockers),tuple(warnings))
 
@@ -338,6 +338,8 @@ def _direction_is_independently_supported(
 def apply_independent_research_validation(
     interpretation:AnalystInterpretation,
     research:GovernedResearchBundle,
+    *,
+    evidence:Optional[Sequence[EvidenceItem]]=None,
 )->AnalystInterpretation:
     """Reconcile provider interpretation with fresh independently verified research.
 
@@ -425,9 +427,39 @@ def apply_independent_research_validation(
     if material_blockers:
         raise ResearchReconciliationError(material_blockers)
 
+    # Reconciliation changes the authoritative component-availability set.
+    # Recompute the frozen completeness input from the final verified rows
+    # before Market Trust/probabilities/BOT are evaluated downstream.
+    final_verified_components={
+        row.component.strip().upper()
+        for row in rows
+        if row.verified and row.raw_score is not None
+    }
+    final_completeness=sum(
+        COMPONENT_WEIGHTS.get(name,0.0)
+        for name in final_verified_components
+    )
+    final_evidence_quality=interpretation.evidence_quality_score
+    if evidence is not None:
+        reconciled_evidence=[
+            item for item in evidence
+            if item.category.strip().upper() not in RESEARCH_SENSITIVE_COMPONENTS
+            or item.category.strip().upper() in final_verified_components
+        ]
+        if reconciled_evidence:
+            verified=sum(
+                1 for item in reconciled_evidence
+                if item.verified and item.source_ref.strip()
+            )
+            final_evidence_quality=verified/len(reconciled_evidence)*100.0
+        else:
+            final_evidence_quality=0.0
+
     return replace(
         interpretation,
         component_scores=tuple(rows),
+        evidence_quality_score=float(final_evidence_quality),
+        completeness_score=float(final_completeness),
         component_summaries=summaries,
     )
 

@@ -439,7 +439,9 @@ def build_production_candidate(
     )
 
     try:
-        interpretation=apply_independent_research_validation(interpretation,governed_research)
+        interpretation=apply_independent_research_validation(
+            interpretation,governed_research,evidence=acquired.evidence
+        )
     except ResearchReconciliationError as exc:
         return ProductionCandidateResult(
             "BLOCKED_RESEARCH_RECONCILIATION",exc.blockers,None,None,None

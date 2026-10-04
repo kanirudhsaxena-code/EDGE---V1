@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from src.evidence_gate import EvidenceItem
 from src.frozen_engine import ComponentInput
 from src.research_bundle import (
     GovernedResearchBundle,
@@ -280,3 +281,27 @@ def test_directional_research_does_not_falsely_validate_neutral_provider():
     assert row.raw_score is None
     assert row.verified is False
     assert out.component_summaries["NEWS_EVENTS_CATALYSTS"][0]=="NOT VERIFIED"
+
+
+def test_post_reconciliation_evidence_quality_uses_final_evidence_set():
+    evidence=tuple(
+        EvidenceItem(name,"TITAN",RUN_AT,f"ref:{name}",verified)
+        for name,verified in (
+            ("PRICE_STRUCTURE",True),
+            ("PV_PVPO",True),
+            ("SPECIFIC_CHART_PATTERN",True),
+            ("NEWS_EVENTS_CATALYSTS",True),
+            ("BUSINESS_FUNDAMENTALS",True),
+            ("INSTITUTIONAL_BEHAVIOUR",False),
+            ("RELATIVE_STRENGTH",True),
+            ("VALUATION",False),
+            ("EVENT_SHOCK",False),
+        )
+    )
+    out=apply_independent_research_validation(
+        interpretation(),governed(),evidence=evidence
+    )
+    # Reconciliation excludes the unsupported mandatory components first.
+    # Evidence quality is then recomputed from the surviving governed set.
+    assert out.completeness_score == 78.0
+    assert out.evidence_quality_score == 100.0

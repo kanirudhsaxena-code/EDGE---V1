@@ -63,3 +63,18 @@ No Phase 2 build-acceptance evidence authorizes an uncontrolled write to live pr
 - EDGE-CONSOLE `c50cabbb` — regression lock for exact five-row read model and no-write/no-efficacy-mutation boundary.
 - EDGE Console CI **#462 / run 36235368163** — **SUCCESS**; companion G4 Learning Lab Acceptance **#14 / run 36235368198** also **SUCCESS**.
 - MDOS Master Programme Tracker → Phase 2.0 Fresh Plan → G5 updated 26-Sep-2026 to record A:D acceptance, the build/evidence separation, and the remaining non-blocking 2C-02 evidence work.
+
+
+## Corrective visible-output closure — 4 Oct 2026
+
+G5-D is complete only when the persisted exact-five path survives the full user-visible chain:
+
+**Engine → atomic persistence → production read model → Console D:D+4 renderer → live Console DOM capture → ChatGPT parity proof.**
+
+Read-model existence alone is insufficient acceptance.
+
+Every standard EDGE Stocks user output must visibly contain D through D+4 with target trading date, direction, Bull/Base/Bear probabilities, expected zone, regime context, evidence basis and verification state. Chat capture must wait for all five rows and compare the visible values to the governed source before success.
+
+A missing path, optional parity mode, score-derived VERIFIED drill-down narrative, or Console/Chat divergence is a fail-closed G5-D defect.
+
+This clarification is presentation/read-model governance only and does not alter the frozen forecasting methodology or numerical calibration logic.

@@ -16,6 +16,7 @@ from typing import Mapping, Optional
 
 from src.assessment_context import AssessmentContext
 from src.persistence import CanonicalRecommendationWrite
+from src.forecast_path import ForecastPathWrite, validate_forecast_path
 
 
 def _fmt(value, digits=2):
@@ -39,8 +40,14 @@ def render_standard_edge_report(
     assessment: AssessmentContext,
     *,
     component_summaries: Optional[Mapping[str, tuple[str,str]]] = None,
+    forecast_path: Optional[ForecastPathWrite] = None,
 ) -> str:
-    """Render the mandatory Efficacy V2 four-table output and no extra narrative."""
+    """Render the mandatory Efficacy V2 output with the governed visible D:D+4 path."""
+    if forecast_path is None:
+        raise ValueError("standard EDGE Stocks report requires governed D:D+4 forecast path")
+    validate_forecast_path(forecast_path)
+    if forecast_path.recommendation_id != recommendation.recommendation_id:
+        raise ValueError("forecast path recommendation_id must match the standard report recommendation")
     m=assessment.master
     s=assessment.stock
 
@@ -130,6 +137,19 @@ def render_standard_edge_report(
         f"| Options Contract | {_escape(contract)} | {_escape(ep.option_suitability_status or 'N/A')} | N/A when options branch is gated |",
         f"| Event Risk | {_escape(recommendation.event_shock_level)} | {_escape(recommendation.active_override or 'Normal')} | Near-term shock constraint |",
     ]
+    for row in forecast_path.rows:
+        probs=(
+            f"Bull {_fmt(row.bull_probability,1)}% / "
+            f"Base {_fmt(row.base_probability,1)}% / "
+            f"Bear {_fmt(row.bear_probability,1)}%"
+        )
+        zone=f"{_fmt(row.outer_expected_zone_low)}–{_fmt(row.outer_expected_zone_high)}"
+        table3.append(
+            f"| Forecast {row.horizon_label} · {row.target_trading_date.isoformat()} | "
+            f"{_escape(row.direction)} | {_escape(probs)}; Zone {_escape(zone)} | "
+            f"Regime: {_escape(row.regime_context)}; Evidence: {_escape(row.evidence_basis)}; "
+            f"Verification: {_escape(row.verification_state)} |"
+        )
 
     summaries=dict(component_summaries or {})
     component_by_name={x.component:x for x in recommendation.component_scores}
@@ -173,9 +193,22 @@ def render_standard_edge_report(
                 availability=row.availability_status
                 if row.raw_score is not None:
                     score=str(row.raw_score)
-            outcome,interpretation=summaries.get(
-                label,(availability,"Component evidence retained in immutable audit record")
-            )
+            summary=summaries.get(key)
+            verified=(row is not None and row.availability_status=="AVAILABLE" and row.evidence_quality!="NOT_VERIFIED")
+            if verified:
+                if (
+                    summary is None
+                    or not str(summary[0]).strip()
+                    or not str(summary[1]).strip()
+                    or "retained in immutable audit record" in str(summary[1]).lower()
+                ):
+                    raise ValueError(f"VERIFIED component {key} is missing persisted evidence-grounded narrative")
+                outcome,interpretation=summary
+            else:
+                outcome,interpretation=(
+                    summary if summary is not None else
+                    (availability,"Evidence not independently verified; no interpretation inferred.")
+                )
         elif label=="Market Trust":
             score=f"{_fmt(recommendation.market_trust_score,1)} / {recommendation.market_trust_band}"
             outcome,interpretation=summaries.get(label,("Quality/freshness/completeness/agreement","Confidence in evidence"))

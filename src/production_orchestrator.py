@@ -494,7 +494,6 @@ def build_production_candidate(
         research_fresh_at=governed_research.research_fresh_at,
     )
     canonical=build_canonical_bundle(shadow,metadata)
-    report=render_standard_edge_report(canonical,assessment,component_summaries=shadow.component_summaries)
 
     try:
         g5_inputs=_build_g5_issuance_inputs(
@@ -526,9 +525,15 @@ def build_production_candidate(
             atr_history_sufficient=True,
             freshness_verified=True,
         )
+        report=render_standard_edge_report(
+            canonical,
+            assessment,
+            component_summaries=shadow.component_summaries,
+            forecast_path=forecast_path,
+        )
     except (G5InputError,AcquisitionError,ValueError) as exc:
         return ProductionCandidateResult(
-            "BLOCKED_G5_INPUTS",(str(exc),),canonical,report,None,None
+            "BLOCKED_G5_INPUTS",(str(exc),),canonical,None,None,None
         )
 
     if not publish:

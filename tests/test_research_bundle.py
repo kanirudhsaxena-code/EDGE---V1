@@ -76,6 +76,27 @@ def governed(verified=("NEWS_EVENTS_CATALYSTS","BUSINESS_FUNDAMENTALS")):
     )
 
 
+def test_incomplete_research_sensitive_coverage_is_blocked():
+    gate=validate_research_bundle_payload(payload(),ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is False
+    assert any("mandatory research-sensitive components" in b for b in gate.blockers)
+    assert any("INSTITUTIONAL_BEHAVIOUR" in b for b in gate.blockers)
+    assert any("VALUATION" in b for b in gate.blockers)
+    assert any("EVENT_SHOCK" in b for b in gate.blockers)
+
+
+def test_complete_five_dimension_research_coverage_is_ready():
+    p=payload()
+    p["claims"].extend([
+        {"claim_id":"c3","evidence_category":"VALUATION","statement":"Valuation independently checked.","materiality":"MODERATE","direction":"NEGATIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c4","evidence_category":"INSTITUTIONAL_BEHAVIOUR","statement":"Institutional behaviour independently checked.","materiality":"MODERATE","direction":"POSITIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c5","evidence_category":"EVENT_SHOCK","statement":"No material event shock identified.","materiality":"HIGH","direction":"NEUTRAL","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+    ])
+    gate=validate_research_bundle_payload(p,ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is True
+    assert not gate.blockers
+
+
 def test_bundle_requires_chatgpt_web_authority():
     p=payload()
     p["retrieval_providers"]=["EXA","UPSTOX"]
@@ -109,6 +130,7 @@ def test_missing_independent_component_validation_excludes_provider_score():
     assert by_name["VALUATION"].verified is False
     assert by_name["VALUATION"].raw_score is None
     assert "fresh independent ChatGPT web validation was unavailable" in out.component_summaries["VALUATION"][1]
+    assert out.completeness_score == 78.0
 
 
 def test_independently_validated_component_keeps_frozen_provider_score():

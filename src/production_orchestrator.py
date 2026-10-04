@@ -393,6 +393,18 @@ def build_production_candidate(
             "BLOCKED_RESEARCH_BUNDLE",("fresh ChatGPT research bundle is required",),None,None,None
         )
     try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "select recommendation_id from recommendation_research_bundle where bundle_id=%s limit 1",
+                (research_bundle_id,),
+            )
+            prior_link=cur.fetchone()
+        if prior_link:
+            return ProductionCandidateResult(
+                "BLOCKED_RESEARCH_BUNDLE",
+                ("research bundle has already been consumed by a prior recommendation; a distinct new run requires new research",),
+                None,None,None,
+            )
         governed_research=load_governed_research_bundle(
             connection,research_bundle_id,ticker=ticker,run_at=run_at
         )

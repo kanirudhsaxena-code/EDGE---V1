@@ -1,7 +1,7 @@
-"""Governed EDGE Research Bundle V1 reader and independent-validation gate.
+"""Governed EDGE Research Bundle V1/V2 reader and independent-validation gate.
 
 This module does not change frozen EDGE weights, probability formulas, BOT, or
-recommendation semantics. It validates the ChatGPT research artifact and decides
+recommendation semantics. It validates the governed independent research artifact and decides
 whether supporting provider-derived research components are eligible to remain
 VERIFIED for the frozen computation core.
 """
@@ -147,7 +147,7 @@ def validate_research_bundle_payload(
             continue
         if not url.startswith(("http://","https://")):
             blockers.append(f"source {sid} URL is invalid")
-        if provider not in {"CHATGPT_WEB","EXA","UPSTOX"}:
+        if provider not in {"CHATGPT_WEB","SYSTEM_WEB","EXA","UPSTOX"}:
             blockers.append(f"source {sid} provider is invalid")
         source_by_id[sid]=raw
 

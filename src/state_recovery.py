@@ -21,8 +21,9 @@ def _checkpoint_cutoff(run_at: datetime) -> tuple[object, bool]:
     if run_at.tzinfo is None:
         raise ValueError("run_at must be timezone-aware")
     local=run_at.astimezone(IST)
-    # Small post-close buffer avoids treating an in-progress trading session as
-    # an overdue daily checkpoint.
+    # Same-day checkpoints are reconciliation candidates after close, but they
+    # do not become efficacy-gate blockers until a later date. This prevents
+    # provider end-of-day candle publication lag from suppressing a fresh run.
     return local.date(), local.time() >= time(15,35)
 
 
@@ -96,10 +97,7 @@ def recover_pre_run_state(connection: Any, ticker: str, run_at: datetime) -> Rec
               max(oc.observed_at) filter (where oc.status='CAPTURED') as latest_observed_at,
               count(oc.checkpoint_id) filter (
                 where oc.status='DUE'
-                  and (
-                    oc.due_date < %s
-                    or (oc.due_date = %s and %s)
-                  )
+                  and oc.due_date < %s
               ) as overdue_due_checkpoints
             from recommendations r
             join recommendation_lifecycle l using(recommendation_id)
@@ -110,7 +108,7 @@ def recover_pre_run_state(connection: Any, ticker: str, run_at: datetime) -> Rec
             group by r.recommendation_id,r.ticker,l.status,l.expiry_trading_date,r.run_timestamp
             order by r.run_timestamp
             """,
-            (local_date,local_date,after_close,symbol),
+            (local_date,symbol),
         )
         rows=cur.fetchall()
         open_rows=tuple(

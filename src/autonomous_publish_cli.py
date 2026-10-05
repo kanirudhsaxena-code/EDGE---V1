@@ -225,14 +225,15 @@ def main() -> int:
                     print(json.dumps({"status":"BLOCKED_DATA_LINEAGE","diagnostic_code":"LIFECYCLE_NOT_FOUND","ticker":ticker,"lifecycle_id":lifecycle_id,"trading_enabled":False},sort_keys=True))
                     return 3
                 expected_stage="AUCTION_READY" if canonical_requested_at is not None else "RESEARCH_READY"
-                if str(lifecycle[0]).upper()!=ticker or str(lifecycle[1])!=expected_stage or str(lifecycle[2] or "")!=market_snapshot_id or str(lifecycle[3] or "")!=research_bundle_id:
+                current_stage=str(lifecycle[1])
+                if str(lifecycle[0]).upper()!=ticker or current_stage not in {expected_stage,"COMPUTE_DISPATCHED"} or str(lifecycle[2] or "")!=market_snapshot_id or str(lifecycle[3] or "")!=research_bundle_id:
                     print(json.dumps({
                         "status":"BLOCKED_DATA_LINEAGE",
                         "diagnostic_code":"LIFECYCLE_NOT_READY_FOR_COMPUTE",
                         "ticker":ticker,
                         "lifecycle_id":lifecycle_id,
                         "expected_stage":expected_stage,
-                        "stage":str(lifecycle[1]),
+                        "stage":current_stage,
                         "market_snapshot_id":str(lifecycle[2] or ""),
                         "research_bundle_id":str(lifecycle[3] or ""),
                         "trading_enabled":False,
@@ -258,10 +259,10 @@ def main() -> int:
                            updated_at=now()
                      where lifecycle_id=%s and stage=%s
                     """,
-                    (lifecycle_id,expected_stage),
+                    (lifecycle_id,current_stage),
                 )
                 if cur.rowcount!=1:
-                    raise RuntimeError("lifecycle did not transition RESEARCH_READY -> COMPUTE_PENDING")
+                    raise RuntimeError("lifecycle did not transition into COMPUTE_PENDING")
             conn.commit()
 
         historical_cache=PostgresHistoricalCache(db_url)

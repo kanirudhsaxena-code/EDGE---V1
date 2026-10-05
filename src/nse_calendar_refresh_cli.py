@@ -61,7 +61,7 @@ def main()->int:
 
         timing_env=None
         timing_payload=None
-        if target.weekday()<5:
+        if target.weekday()<5 or target in entries.special_timing_dates:
             timing_env=provider.market_timings(target)
             timing_payload=timing_env.payload
         exact=classify_exact_nse_session(target,holiday_env.payload,timing_payload)

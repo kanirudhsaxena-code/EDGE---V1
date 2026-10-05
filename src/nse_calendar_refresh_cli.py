@@ -100,6 +100,9 @@ def main()->int:
                     ),
                 )
 
+            acquired=max(
+                [holiday_env.received_at]+([timing_env.received_at] if timing_env else [])
+            )
             proof_payload={
                 "session_date":target.isoformat(),
                 "session_state":exact.state,
@@ -108,11 +111,9 @@ def main()->int:
                 "market_close_at":exact.market_close_at.isoformat() if exact.market_close_at else None,
                 "calendar_source_ref":holiday_env.source_ref,
                 "timing_source_ref":timing_env.source_ref if timing_env else None,
+                "acquired_at":acquired.isoformat(),
             }
             proof_hash=_stable_hash(proof_payload)
-            acquired=max(
-                [holiday_env.received_at]+([timing_env.received_at] if timing_env else [])
-            )
             cur.execute(
                 """
                 INSERT INTO nse_session_proofs(

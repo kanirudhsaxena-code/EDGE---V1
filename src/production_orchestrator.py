@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Callable, Mapping, Optional
 
 from src.assessment_context import load_assessment_context
-from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer, acquired_from_snapshot
+from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer, acquired_from_snapshot, with_auction_payload
 from src.autonomous_interpreter import ConservativeAutonomousInterpreter
 from src.checkpoint_reconciler import reconcile_overdue_checkpoints
 from src.evidence_persistence import canonical_evidence_records
@@ -48,7 +48,7 @@ from src.g5_issuance_inputs import (
 )
 from src.horizon_path_shadow import build_g5_stock_dd4_forecast_path
 from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider
-from src.market_snapshot import load_market_snapshot
+from src.market_snapshot import load_market_snapshot, load_auction_snapshot
 from src.persistence import AtomicNeonPersistenceAdapter, CanonicalRecommendationWrite
 from src.pre_run_gate import evaluate_pre_run_gate
 from src.production_bundle import ProductionMetadata, build_canonical_bundle
@@ -355,6 +355,7 @@ def build_production_candidate(
     research_bundle_id: Optional[str]=None,
     lifecycle_id: Optional[str]=None,
     market_snapshot_id: Optional[str]=None,
+    auction_snapshot_id: Optional[str]=None,
     canonical_requested_at: Optional[datetime]=None,
     canonical_attempt_slot: Optional[str]=None,
     governance_trigger_type: str="USER",
@@ -452,6 +453,35 @@ def build_production_candidate(
     acquired=augment_acquired_evidence_with_research(
         acquired,governed_research,run_at=run_at,options_decision_requested=False
     )
+
+    if preopen_canonical:
+        if not lifecycle_id or not market_snapshot_id or not auction_snapshot_id:
+            return ProductionCandidateResult(
+                "BLOCKED_AUCTION_LINEAGE",
+                ("pre-open computation requires lifecycle_id, market_snapshot_id and auction_snapshot_id",),
+                None,None,None,
+            )
+        try:
+            auction=load_auction_snapshot(
+                connection,auction_snapshot_id,ticker=ticker,lifecycle_id=lifecycle_id
+            )
+        except (ValueError,TypeError,KeyError) as exc:
+            return ProductionCandidateResult(
+                "BLOCKED_AUCTION_LINEAGE",(str(exc),),None,None,None
+            )
+        if not _is_governed_preopen_time(auction.captured_at) or not _same_ist_date(auction.captured_at,run_at):
+            return ProductionCandidateResult(
+                "BLOCKED_AUCTION_LINEAGE",
+                ("auction snapshot was not captured in the governed pre-open window for this run",),
+                None,None,None,
+            )
+        acquired=with_auction_payload(
+            acquired,
+            auction_source_ref=auction.source_ref,
+            auction_payload=auction.payload.get("quote",{}),
+            captured_at=auction.captured_at,
+        )
+
     if not acquired.gate.ready:
         return ProductionCandidateResult(
             "BLOCKED_EVIDENCE",acquired.gate.blockers,None,None,None

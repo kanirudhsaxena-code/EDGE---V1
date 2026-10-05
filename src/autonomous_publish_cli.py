@@ -67,6 +67,8 @@ def main() -> int:
     holding_raw=os.getenv("EDGE_HOLDING_STATE","UNKNOWN").strip().upper()
     run_mode=os.getenv("EDGE_RUN_MODE","MANUAL").strip().upper()
     research_bundle_id=os.getenv("EDGE_RESEARCH_BUNDLE_ID","").strip()
+    lifecycle_id=os.getenv("EDGE_LIFECYCLE_ID","").strip()
+    market_snapshot_id=os.getenv("EDGE_MARKET_SNAPSHOT_ID","").strip()
     canonical_requested_raw=os.getenv("EDGE_CANONICAL_REQUESTED_AT","").strip()
     canonical_attempt_slot=os.getenv("EDGE_CANONICAL_ATTEMPT_SLOT","").strip() or None
     canonical_requested_at=None
@@ -95,13 +97,25 @@ def main() -> int:
     if not research_bundle_id:
         print(json.dumps({
             "status":"BLOCKED_RESEARCH_BUNDLE",
-            "diagnostic_code":"CHATGPT_RESEARCH_BUNDLE_REQUIRED",
+            "diagnostic_code":"GOVERNED_RESEARCH_BUNDLE_REQUIRED",
             "ticker":ticker,
             "run_mode":run_mode,
             "publishing_enabled":False,
             "trading_enabled":False,
         },sort_keys=True))
         return 0 if run_mode=="SCHEDULED" else 3
+
+    if bool(lifecycle_id) != bool(market_snapshot_id):
+        print(json.dumps({
+            "status":"BLOCKED_DATA_LINEAGE",
+            "diagnostic_code":"LIFECYCLE_AND_MARKET_SNAPSHOT_REQUIRED_TOGETHER",
+            "ticker":ticker,
+            "lifecycle_id":lifecycle_id or None,
+            "market_snapshot_id":market_snapshot_id or None,
+            "publishing_enabled":False,
+            "trading_enabled":False,
+        },sort_keys=True))
+        return 2
 
     if not token or not db_url:
         code="UPSTOX_TOKEN_MISSING" if not token else "DATABASE_URL_MISSING"
@@ -194,6 +208,47 @@ def main() -> int:
             },sort_keys=True))
             return 0
 
+        if lifecycle_id:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    select ticker,stage,market_snapshot_id,research_bundle_id
+                      from edge_run_lifecycles
+                     where lifecycle_id=%s
+                     limit 1
+                    """,
+                    (lifecycle_id,),
+                )
+                lifecycle=cur.fetchone()
+                if not lifecycle:
+                    print(json.dumps({"status":"BLOCKED_DATA_LINEAGE","diagnostic_code":"LIFECYCLE_NOT_FOUND","ticker":ticker,"lifecycle_id":lifecycle_id,"trading_enabled":False},sort_keys=True))
+                    return 3
+                if str(lifecycle[0]).upper()!=ticker or str(lifecycle[1])!="RESEARCH_READY" or str(lifecycle[2] or "")!=market_snapshot_id or str(lifecycle[3] or "")!=research_bundle_id:
+                    print(json.dumps({
+                        "status":"BLOCKED_DATA_LINEAGE",
+                        "diagnostic_code":"LIFECYCLE_NOT_RESEARCH_READY",
+                        "ticker":ticker,
+                        "lifecycle_id":lifecycle_id,
+                        "stage":str(lifecycle[1]),
+                        "market_snapshot_id":str(lifecycle[2] or ""),
+                        "research_bundle_id":str(lifecycle[3] or ""),
+                        "trading_enabled":False,
+                    },sort_keys=True))
+                    return 3
+                cur.execute(
+                    """
+                    update edge_run_lifecycles
+                       set stage='COMPUTE_PENDING',
+                           stage_detail='Governed reconciliation/computation started from run-bound DATA and RESEARCH',
+                           updated_at=now()
+                     where lifecycle_id=%s and stage='RESEARCH_READY'
+                    """,
+                    (lifecycle_id,),
+                )
+                if cur.rowcount!=1:
+                    raise RuntimeError("lifecycle did not transition RESEARCH_READY -> COMPUTE_PENDING")
+            conn.commit()
+
         historical_cache=PostgresHistoricalCache(db_url)
         result=build_production_candidate(
             connection=conn,
@@ -204,6 +259,8 @@ def main() -> int:
             publish=True,
             historical_cache=historical_cache,
             research_bundle_id=research_bundle_id,
+            lifecycle_id=lifecycle_id or None,
+            market_snapshot_id=market_snapshot_id or None,
             canonical_requested_at=canonical_requested_at,
             canonical_attempt_slot=canonical_attempt_slot,
             governance_trigger_type=("SCHEDULED" if run_mode=="SCHEDULED" or canonical_attempt_slot else "USER"),
@@ -213,6 +270,37 @@ def main() -> int:
                 autonomous_publishing_approved=True,
             ),
         )
+        if lifecycle_id:
+            state_conn=psycopg.connect(db_url)
+            try:
+                with state_conn.cursor() as cur:
+                    if result.status=="PUBLISHED":
+                        cur.execute(
+                            """
+                            update edge_run_lifecycles
+                               set stage='PERSISTED',
+                                   recommendation_id=%s,
+                                   stage_detail='Governed computation persisted successfully',
+                                   updated_at=now()
+                             where lifecycle_id=%s and stage='COMPUTE_PENDING'
+                            """,
+                            (result.persistence_id,lifecycle_id),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            update edge_run_lifecycles
+                               set stage='COMPUTE_BLOCKED',
+                                   stage_detail=%s,
+                                   updated_at=now()
+                             where lifecycle_id=%s and stage='COMPUTE_PENDING'
+                            """,
+                            ((result.status+": "+"; ".join(result.blockers))[:1000],lifecycle_id),
+                        )
+                state_conn.commit()
+            finally:
+                state_conn.close()
+
         print(json.dumps(_bounded_payload(result,ticker,holding),sort_keys=True,default=str))
         if result.report_markdown:
             with open("edge-published-report.md","w",encoding="utf-8") as fh:

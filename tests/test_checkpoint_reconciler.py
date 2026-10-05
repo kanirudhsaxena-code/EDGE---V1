@@ -174,7 +174,7 @@ def test_same_day_checkpoint_stays_due_when_provider_daily_candle_has_not_landed
 
 
 def test_historical_missing_daily_candle_still_fails_closed():
-    due=date(2026,10,2)
+    due=date(2026,10,1)
     class MissingEnv:
         source_ref="upstox:v3#missing-old"
         payload={"status":"success","data":{"candles":[]}}
@@ -188,6 +188,6 @@ def test_historical_missing_daily_candle_still_fails_closed():
             conn,MissingProvider(),"LTF",datetime(2026,10,5,11,41,tzinfo=timezone.utc)
         )
     except RuntimeError as exc:
-        assert "no verified daily candle found for 2026-10-02" in str(exc)
+        assert "no verified daily candle found for 2026-10-01" in str(exc)
     else:
         raise AssertionError("historical missing daily candle must fail closed")

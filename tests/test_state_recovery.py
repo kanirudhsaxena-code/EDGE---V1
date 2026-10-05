@@ -8,7 +8,9 @@ class Cursor:
         self.report_row=report_row
         self.open_rows=open_rows
         self.mode=None
+        self.calls=[]
     def execute(self,sql,params=None):
+        self.calls.append((" ".join(sql.split()),params))
         self.mode="report" if "from v_edge_stock_report" in sql else "open"
     def fetchone(self):
         return self.report_row if self.mode=="report" else None
@@ -45,3 +47,15 @@ def test_new_ticker_without_report_gets_zero_snapshot():
     assert state.efficacy_snapshot.official_sample_size==0
     assert state.efficacy_snapshot.provisional_captured_checkpoints==0
     assert state.open_recommendations==()
+
+
+def test_same_day_due_checkpoint_is_not_classified_overdue_by_recovery_query():
+    conn=Conn(None,[])
+    recover_pre_run_state(
+        conn,"LTF",datetime(2026,10,5,15,0,tzinfo=timezone.utc)
+    )
+    open_call=[call for call in conn.c.calls if "from recommendations r" in call[0]][0]
+    sql,params=open_call
+    assert "oc.due_date < %s" in sql
+    assert "oc.due_date = %s" not in sql
+    assert params==(date(2026,10,5),"LTF")

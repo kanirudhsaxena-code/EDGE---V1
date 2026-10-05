@@ -69,6 +69,7 @@ def main() -> int:
     research_bundle_id=os.getenv("EDGE_RESEARCH_BUNDLE_ID","").strip()
     lifecycle_id=os.getenv("EDGE_LIFECYCLE_ID","").strip()
     market_snapshot_id=os.getenv("EDGE_MARKET_SNAPSHOT_ID","").strip()
+    auction_snapshot_id=os.getenv("EDGE_AUCTION_SNAPSHOT_ID","").strip()
     canonical_requested_raw=os.getenv("EDGE_CANONICAL_REQUESTED_AT","").strip()
     canonical_attempt_slot=os.getenv("EDGE_CANONICAL_ATTEMPT_SLOT","").strip() or None
     canonical_requested_at=None
@@ -212,7 +213,7 @@ def main() -> int:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    select ticker,stage,market_snapshot_id,research_bundle_id
+                    select ticker,stage,market_snapshot_id,research_bundle_id,auction_snapshot_id
                       from edge_run_lifecycles
                      where lifecycle_id=%s
                      limit 1
@@ -235,6 +236,18 @@ def main() -> int:
                         "trading_enabled":False,
                     },sort_keys=True))
                     return 3
+                if canonical_requested_at is not None:
+                    if not auction_snapshot_id or str(lifecycle[4] or "")!=auction_snapshot_id:
+                        print(json.dumps({
+                            "status":"BLOCKED_AUCTION_LINEAGE",
+                            "diagnostic_code":"AUCTION_SNAPSHOT_NOT_BOUND_TO_LIFECYCLE",
+                            "ticker":ticker,
+                            "lifecycle_id":lifecycle_id,
+                            "auction_snapshot_id":auction_snapshot_id or None,
+                            "stored_auction_snapshot_id":str(lifecycle[4] or "") or None,
+                            "trading_enabled":False,
+                        },sort_keys=True))
+                        return 3
                 cur.execute(
                     """
                     update edge_run_lifecycles
@@ -261,6 +274,7 @@ def main() -> int:
             research_bundle_id=research_bundle_id,
             lifecycle_id=lifecycle_id or None,
             market_snapshot_id=market_snapshot_id or None,
+            auction_snapshot_id=auction_snapshot_id or None,
             canonical_requested_at=canonical_requested_at,
             canonical_attempt_slot=canonical_attempt_slot,
             governance_trigger_type=("SCHEDULED" if run_mode=="SCHEDULED" or canonical_attempt_slot else "USER"),

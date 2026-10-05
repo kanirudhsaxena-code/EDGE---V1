@@ -11,6 +11,7 @@ from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider, 
 from src.trading_calendar import (
     classify_exact_nse_session,
     parse_nse_calendar_entries,
+    should_fetch_exact_nse_timing,
 )
 
 IST=ZoneInfo("Asia/Kolkata")
@@ -64,9 +65,7 @@ def main()->int:
         # A verified trading-holiday row is already sufficient closed-session
         # authority. Do not make a needless timings request that could turn an
         # expected market closure into provider-error noise.
-        if target not in entries.trading_holidays and (
-            target.weekday()<5 or target in entries.special_timing_dates
-        ):
+        if should_fetch_exact_nse_timing(target,entries):
             timing_env=provider.market_timings(target)
             timing_payload=timing_env.payload
         exact=classify_exact_nse_session(target,holiday_env.payload,timing_payload)

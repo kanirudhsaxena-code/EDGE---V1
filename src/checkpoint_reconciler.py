@@ -105,7 +105,18 @@ def reconcile_overdue_checkpoints(
             if "no verified daily candle found" not in str(exc):
                 raise
             legacy = provider.daily_legacy(instrument_key,observation_date,observation_date)
-            close,high,low=_candle_for_date(dict(legacy.payload),observation_date)
+            try:
+                close,high,low=_candle_for_date(dict(legacy.payload),observation_date)
+            except RuntimeError as legacy_exc:
+                if "no verified daily candle found" not in str(legacy_exc):
+                    raise
+                # Upstox can publish the just-closed daily candle with a delay.
+                # A learning checkpoint that is due today must remain DUE and be
+                # retried later; it must not abort a fresh governed trading run.
+                # Historical missing sessions remain a hard data-integrity error.
+                if observation_date == run_at.astimezone(IST).date():
+                    continue
+                raise
             env = legacy
         source_ref=env.source_ref
         if observation_date != cp.due_date:

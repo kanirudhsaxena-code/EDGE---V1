@@ -151,3 +151,43 @@ def test_legacy_nse_holiday_checkpoint_rolls_forward_to_next_trading_session():
     assert out[0].actual_price==304
     assert "calendar_rollforward:2026-09-14->2026-09-15" in out[0].source_ref
     assert conn.committed is True
+
+
+def test_same_day_checkpoint_stays_due_when_provider_daily_candle_has_not_landed_yet():
+    due=date(2026,10,5)
+    class MissingEnv:
+        source_ref="upstox:v3#missing-current"
+        payload={"status":"success","data":{"candles":[
+            ["2026-10-02T00:00:00+05:30",300,305,295,302,1000,0]
+        ]}}
+    class MissingProvider:
+        def resolve_nse_equity(self,ticker): return ("NSE_EQ|X","X")
+        def daily(self,key,start,end): return MissingEnv()
+        def daily_legacy(self,key,start,end): return MissingEnv()
+    conn=Conn([(11,"EDGE-LTF-CURRENT","LTF","D+1",due)])
+    out=reconcile_overdue_checkpoints(
+        conn,MissingProvider(),"LTF",datetime(2026,10,5,11,41,tzinfo=timezone.utc)
+    )
+    assert out==()
+    updates=[call for call in conn.c.calls if call[0].startswith("update outcome_checkpoints")]
+    assert updates==[]
+
+
+def test_historical_missing_daily_candle_still_fails_closed():
+    due=date(2026,10,1)
+    class MissingEnv:
+        source_ref="upstox:v3#missing-old"
+        payload={"status":"success","data":{"candles":[]}}
+    class MissingProvider:
+        def resolve_nse_equity(self,ticker): return ("NSE_EQ|X","X")
+        def daily(self,key,start,end): return MissingEnv()
+        def daily_legacy(self,key,start,end): return MissingEnv()
+    conn=Conn([(12,"EDGE-LTF-OLD","LTF","D+1",due)])
+    try:
+        reconcile_overdue_checkpoints(
+            conn,MissingProvider(),"LTF",datetime(2026,10,5,11,41,tzinfo=timezone.utc)
+        )
+    except RuntimeError as exc:
+        assert "no verified daily candle found for 2026-10-01" in str(exc)
+    else:
+        raise AssertionError("historical missing daily candle must fail closed")

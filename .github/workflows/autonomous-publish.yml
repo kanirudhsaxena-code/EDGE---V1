@@ -15,8 +15,14 @@ on:
         required: true
         default: "UNKNOWN"
       research_bundle_id:
-        description: "Immutable EDGE_RESEARCH_BUNDLE_V1 id created by ChatGPT research orchestration"
+        description: "Immutable governed EDGE research bundle id"
         required: true
+      lifecycle_id:
+        description: "Optional governed EDGE lifecycle id; mandatory for new data-first orchestration"
+        required: false
+      market_snapshot_id:
+        description: "Optional immutable DATA snapshot id paired with lifecycle_id"
+        required: false
       canonical_requested_at:
         description: "Optional governed pre-open canonical request timestamp (ISO-8601)"
         required: false
@@ -41,6 +47,8 @@ jobs:
       EDGE_HOLDING_STATE: ${{ inputs.holding_state || 'UNKNOWN' }}
       EDGE_RUN_MODE: ${{ github.event_name == 'schedule' && 'SCHEDULED' || 'MANUAL' }}
       EDGE_RESEARCH_BUNDLE_ID: ${{ inputs.research_bundle_id || '' }}
+      EDGE_LIFECYCLE_ID: ${{ inputs.lifecycle_id || '' }}
+      EDGE_MARKET_SNAPSHOT_ID: ${{ inputs.market_snapshot_id || '' }}
       EDGE_CANONICAL_REQUESTED_AT: ${{ inputs.canonical_requested_at || '' }}
       EDGE_CANONICAL_ATTEMPT_SLOT: ${{ inputs.canonical_attempt_slot || '' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}

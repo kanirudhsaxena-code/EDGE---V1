@@ -400,7 +400,7 @@ def build_production_candidate(
 
     if not research_bundle_id:
         return ProductionCandidateResult(
-            "BLOCKED_RESEARCH_BUNDLE",("fresh ChatGPT research bundle is required",),None,None,None
+            "BLOCKED_RESEARCH_BUNDLE",("fresh governed research bundle is required",),None,None,None
         )
     try:
         governed_research=load_governed_research_bundle(

@@ -9,7 +9,7 @@ on:
   schedule:
     # Independent resilience refreshes; canonical timing authority remains Cloudflare.
     - cron: "45 18 * * *"   # 00:15 IST daily
-    - cron: "45 2 * * 1-5" # 08:15 IST weekdays
+    - cron: "45 2 * * *"   # 08:15 IST daily; dynamic session proof decides eligibility
 
 permissions:
   contents: read

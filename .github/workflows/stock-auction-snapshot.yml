@@ -1,0 +1,48 @@
+name: EDGE Stock Auction Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "NSE trading symbol"
+        required: true
+      lifecycle_id:
+        description: "Existing RESEARCH_READY pre-open lifecycle"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-stock-auction-${{ inputs.lifecycle_id }}
+  cancel-in-progress: false
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PYTHONPATH: .
+      EDGE_TICKER: ${{ inputs.ticker }}
+      EDGE_LIFECYCLE_ID: ${{ inputs.lifecycle_id }}
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PostgreSQL client
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Acquire and freeze AUCTION snapshot
+        run: |
+          set -o pipefail
+          python -m src.auction_snapshot_cli | tee edge-stock-auction-snapshot.json
+      - name: Upload bounded AUCTION-stage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-stock-auction-${{ inputs.lifecycle_id }}
+          path: edge-stock-auction-snapshot.json
+          retention-days: 14
+          if-no-files-found: error

@@ -61,7 +61,12 @@ def main()->int:
 
         timing_env=None
         timing_payload=None
-        if target.weekday()<5 or target in entries.special_timing_dates:
+        # A verified trading-holiday row is already sufficient closed-session
+        # authority. Do not make a needless timings request that could turn an
+        # expected market closure into provider-error noise.
+        if target not in entries.trading_holidays and (
+            target.weekday()<5 or target in entries.special_timing_dates
+        ):
             timing_env=provider.market_timings(target)
             timing_payload=timing_env.payload
         exact=classify_exact_nse_session(target,holiday_env.payload,timing_payload)

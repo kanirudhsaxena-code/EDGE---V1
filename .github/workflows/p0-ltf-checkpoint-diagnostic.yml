@@ -1,0 +1,59 @@
+name: P0 LTF Checkpoint Diagnostic
+
+on:
+  push:
+    branches:
+      - p0-ltf-checkpoint-diagnostic-20261005
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check 'psycopg[binary]>=3.2,<4'
+      - name: Diagnose overdue LTF checkpoints read only
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone, timedelta
+          import os, psycopg
+          from src.checkpoint_reconciler import overdue_due_checkpoints, _candle_for_date
+          from src.market_providers import UpstoxReadOnlyStockProvider
+          from src.canonical_governance import is_nse_day, next_nse_day
+
+          conn=psycopg.connect(os.environ['DATABASE_URL'])
+          run_at=datetime.now(timezone.utc)
+          due=overdue_due_checkpoints(conn,'LTF',run_at)
+          print('DUE_COUNT',len(due))
+          provider=UpstoxReadOnlyStockProvider(os.environ['UPSTOX_ANALYTICS_TOKEN'])
+          instrument_key,_=provider.resolve_nse_equity('LTF')
+          for cp in due:
+              observation_date=cp.due_date if is_nse_day(cp.due_date) else next_nse_day(cp.due_date)
+              print('CHECKPOINT',cp.checkpoint_id,cp.recommendation_id,cp.checkpoint_type,cp.due_date.isoformat(),'OBS',observation_date.isoformat())
+              for label,fetch in [
+                  ('V3',lambda:provider.daily(instrument_key,observation_date-timedelta(days=7),observation_date)),
+                  ('V2',lambda:provider.daily_legacy(instrument_key,observation_date,observation_date)),
+              ]:
+                  try:
+                      env=fetch()
+                      candles=(env.payload.get('data') or {}).get('candles') or []
+                      dates=[str(row[0])[:10] for row in candles if isinstance(row,list) and row]
+                      print(label,'SOURCE',env.source_ref,'DATES',dates[:12])
+                      try:
+                          close,high,low=_candle_for_date(dict(env.payload),observation_date)
+                          print(label,'EXACT','YES','CLOSE',close,'HIGH',high,'LOW',low)
+                      except Exception as e:
+                          print(label,'EXACT','NO',type(e).__name__,str(e))
+                  except Exception as e:
+                      print(label,'FETCH_ERROR',type(e).__name__,str(e)[:240])
+          conn.close()
+          PY

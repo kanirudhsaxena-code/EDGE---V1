@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Callable, Mapping, Optional
 
 from src.assessment_context import load_assessment_context
-from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer
+from src.autonomous_evidence_acquisition import AutonomousEvidenceAcquirer, acquired_from_snapshot
 from src.autonomous_interpreter import ConservativeAutonomousInterpreter
 from src.checkpoint_reconciler import reconcile_overdue_checkpoints
 from src.evidence_persistence import canonical_evidence_records
@@ -48,6 +48,7 @@ from src.g5_issuance_inputs import (
 )
 from src.horizon_path_shadow import build_g5_stock_dd4_forecast_path
 from src.market_providers import AcquisitionError, UpstoxReadOnlyStockProvider
+from src.market_snapshot import load_market_snapshot
 from src.persistence import AtomicNeonPersistenceAdapter, CanonicalRecommendationWrite
 from src.pre_run_gate import evaluate_pre_run_gate
 from src.production_bundle import ProductionMetadata, build_canonical_bundle
@@ -352,6 +353,8 @@ def build_production_candidate(
     release_approval: Optional[ReleaseApproval]=None,
     historical_cache: Any=None,
     research_bundle_id: Optional[str]=None,
+    lifecycle_id: Optional[str]=None,
+    market_snapshot_id: Optional[str]=None,
     canonical_requested_at: Optional[datetime]=None,
     canonical_attempt_slot: Optional[str]=None,
     governance_trigger_type: str="USER",
@@ -376,6 +379,12 @@ def build_production_candidate(
 
     market=UpstoxReadOnlyStockProvider(upstox_token,historical_cache=historical_cache)
     research=UpstoxReadOnlyResearchProvider(upstox_token)
+    if bool(lifecycle_id) != bool(market_snapshot_id):
+        return ProductionCandidateResult(
+            "BLOCKED_DATA_LINEAGE",
+            ("lifecycle_id and market_snapshot_id must be supplied together",),
+            None,None,None,
+        )
 
     # Canonical efficacy is assessed first. Only overdue checkpoints are captured;
     # today's incomplete session is never substituted for a daily close.
@@ -401,8 +410,35 @@ def build_production_candidate(
             "BLOCKED_RESEARCH_BUNDLE",(str(exc),),None,None,None
         )
 
-    acquirer=AutonomousEvidenceAcquirer(market,[research])
-    acquired=acquirer.acquire(ticker,run_at,options_decision_requested=False)
+    if lifecycle_id and market_snapshot_id:
+        try:
+            stored_snapshot=load_market_snapshot(
+                connection,market_snapshot_id,ticker=ticker,lifecycle_id=lifecycle_id
+            )
+        except (ValueError,TypeError,KeyError) as exc:
+            return ProductionCandidateResult(
+                "BLOCKED_DATA_LINEAGE",(str(exc),),None,None,None
+            )
+        snapshot_age=(run_at.astimezone(timezone.utc)-stored_snapshot.captured_at.astimezone(timezone.utc)).total_seconds()/60.0
+        if snapshot_age < -2 or snapshot_age > 90:
+            return ProductionCandidateResult(
+                "BLOCKED_DATA_LINEAGE",
+                (f"market snapshot is outside the governed 90-minute lifecycle window ({snapshot_age:.1f}m)",),
+                None,None,None,
+            )
+        acquired=acquired_from_snapshot(
+            stored_snapshot.market,
+            stored_snapshot.provider_research,
+            ticker,
+            run_at,
+            options_decision_requested=False,
+        )
+    else:
+        # Compatibility path for legacy/manual callers. New governed lifecycle
+        # callers MUST supply the immutable DATA snapshot identity.
+        acquirer=AutonomousEvidenceAcquirer(market,[research])
+        acquired=acquirer.acquire(ticker,run_at,options_decision_requested=False)
+
     acquired=augment_acquired_evidence_with_research(
         acquired,governed_research,run_at=run_at,options_decision_requested=False
     )

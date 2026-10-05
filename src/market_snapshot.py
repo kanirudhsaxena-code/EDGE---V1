@@ -242,3 +242,171 @@ def load_market_snapshot(
         market=market,
         provider_research=supporting,
     )
+
+
+@dataclass(frozen=True)
+class StoredAuctionSnapshot:
+    auction_snapshot_id:str
+    lifecycle_id:str
+    ticker:str
+    captured_at:datetime
+    source_ref:str
+    indicative_equilibrium_price:float
+    payload:Mapping[str,Any]
+
+
+def _auction_iep(payload:Mapping[str,Any])->float|None:
+    data=payload.get("data")
+    rows=[]
+    if isinstance(data,Mapping):
+        rows.append(data)
+        rows.extend(value for value in data.values() if isinstance(value,Mapping))
+    for row in rows:
+        candidates=[row.get("indicative_equilibrium_price")]
+        ltpc=row.get("ltpc")
+        if isinstance(ltpc,Mapping):
+            candidates.append(ltpc.get("iep"))
+        for value in candidates:
+            try:
+                iep=float(value)
+            except (TypeError,ValueError):
+                continue
+            if iep>0:
+                return iep
+    return None
+
+
+def capture_auction_snapshot(
+    connection:Any,
+    *,
+    ticker:str,
+    lifecycle_id:str,
+    run_at:datetime,
+    upstox_token:str,
+)->StoredAuctionSnapshot:
+    if run_at.tzinfo is None:
+        raise ValueError("run_at must be timezone-aware")
+    local=run_at.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+    clock=local.timetz().replace(tzinfo=None)
+    from datetime import time
+    if local.weekday()>=5 or not (time(9,10)<=clock<time(9,15)):
+        raise ValueError("auction snapshot is outside governed 09:10-09:15 IST window")
+
+    symbol=ticker.strip().upper()
+    lifecycle=lifecycle_id.strip()
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            select ticker,stage,market_snapshot_id,research_bundle_id,auction_snapshot_id
+              from edge_run_lifecycles
+             where lifecycle_id=%s
+             limit 1
+            """,
+            (lifecycle,),
+        )
+        row=cur.fetchone()
+    if not row:
+        raise ValueError("lifecycle not found")
+    if str(row[0]).upper()!=symbol:
+        raise ValueError("lifecycle ticker mismatch")
+    if str(row[1])!="RESEARCH_READY":
+        raise ValueError("auction requires RESEARCH_READY lifecycle")
+    if not row[2] or not row[3]:
+        raise ValueError("auction lifecycle DATA/RESEARCH lineage is incomplete")
+    if row[4]:
+        return load_auction_snapshot(connection,str(row[4]),ticker=symbol,lifecycle_id=lifecycle)
+
+    provider=UpstoxReadOnlyStockProvider(upstox_token)
+    instrument_key,_=provider.resolve_nse_equity(symbol)
+    quote=provider.quote(instrument_key)
+    iep=_auction_iep(quote.payload)
+    if iep is None:
+        raise ValueError("pre-open indicative equilibrium price is unavailable from Upstox quote")
+
+    payload={
+        "schema_version":"EDGE_AUCTION_SNAPSHOT_V1",
+        "lifecycle_id":lifecycle,
+        "ticker":symbol,
+        "captured_at":run_at.astimezone(timezone.utc).isoformat(),
+        "instrument_key":instrument_key,
+        "source_ref":quote.source_ref,
+        "quote":quote.payload,
+        "indicative_equilibrium_price":iep,
+    }
+    raw=_stable_json(payload)
+    digest=hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    stamp=run_at.astimezone(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    auction_id=f"EDGE-AUCT-{symbol}-{stamp}-{digest[:12]}"
+
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            insert into edge_auction_snapshots(
+              auction_snapshot_id,lifecycle_id,ticker,captured_at,provider,source_ref,
+              indicative_equilibrium_price,payload,payload_hash,status
+            ) values (%s,%s,%s,%s,'UPSTOX',%s,%s,%s::jsonb,%s,'AUCTION_READY')
+            """,
+            (auction_id,lifecycle,symbol,run_at,quote.source_ref,iep,raw,digest),
+        )
+        cur.execute(
+            """
+            update edge_run_lifecycles
+               set auction_snapshot_id=%s,
+                   stage_detail='Frozen pre-open AUCTION snapshot ready for governed computation',
+                   updated_at=now()
+             where lifecycle_id=%s
+               and stage='RESEARCH_READY'
+            """,
+            (auction_id,lifecycle),
+        )
+        if cur.rowcount!=1:
+            raise RuntimeError("lifecycle did not accept AUCTION snapshot")
+    connection.commit()
+    return StoredAuctionSnapshot(
+        auction_snapshot_id=auction_id,
+        lifecycle_id=lifecycle,
+        ticker=symbol,
+        captured_at=run_at,
+        source_ref=quote.source_ref,
+        indicative_equilibrium_price=iep,
+        payload=payload,
+    )
+
+
+def load_auction_snapshot(
+    connection:Any,
+    auction_snapshot_id:str,
+    *,
+    ticker:str,
+    lifecycle_id:str,
+)->StoredAuctionSnapshot:
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            select auction_snapshot_id,lifecycle_id,ticker,captured_at,source_ref,
+                   indicative_equilibrium_price,payload,status
+              from edge_auction_snapshots
+             where auction_snapshot_id=%s
+             limit 1
+            """,
+            (auction_snapshot_id.strip(),),
+        )
+        row=cur.fetchone()
+    if not row:
+        raise ValueError("auction snapshot not found")
+    if str(row[7])!="AUCTION_READY":
+        raise ValueError("auction snapshot is not AUCTION_READY")
+    if str(row[2]).upper()!=ticker.strip().upper():
+        raise ValueError("auction snapshot ticker mismatch")
+    if str(row[1])!=lifecycle_id.strip():
+        raise ValueError("auction snapshot lifecycle mismatch")
+    payload=row[6] if isinstance(row[6],Mapping) else json.loads(str(row[6]))
+    return StoredAuctionSnapshot(
+        auction_snapshot_id=str(row[0]),
+        lifecycle_id=str(row[1]),
+        ticker=str(row[2]).upper(),
+        captured_at=row[3] if isinstance(row[3],datetime) else _aware(row[3]),
+        source_ref=str(row[4]),
+        indicative_equilibrium_price=float(row[5]),
+        payload=payload,
+    )

@@ -309,8 +309,8 @@ def capture_auction_snapshot(
         raise ValueError("lifecycle not found")
     if str(row[0]).upper()!=symbol:
         raise ValueError("lifecycle ticker mismatch")
-    if str(row[1])!="RESEARCH_READY":
-        raise ValueError("auction requires RESEARCH_READY lifecycle")
+    if str(row[1]) not in {"AUCTION_PENDING","AUCTION_READY"}:
+        raise ValueError("auction requires AUCTION_PENDING lifecycle")
     if not row[2] or not row[3]:
         raise ValueError("auction lifecycle DATA/RESEARCH lineage is incomplete")
     if row[4]:
@@ -352,15 +352,16 @@ def capture_auction_snapshot(
             """
             update edge_run_lifecycles
                set auction_snapshot_id=%s,
+                   stage='AUCTION_READY',
                    stage_detail='Frozen pre-open AUCTION snapshot ready for governed computation',
                    updated_at=now()
              where lifecycle_id=%s
-               and stage='RESEARCH_READY'
+               and stage='AUCTION_PENDING'
             """,
             (auction_id,lifecycle),
         )
         if cur.rowcount!=1:
-            raise RuntimeError("lifecycle did not accept AUCTION snapshot")
+            raise RuntimeError("lifecycle did not transition AUCTION_PENDING -> AUCTION_READY")
     connection.commit()
     return StoredAuctionSnapshot(
         auction_snapshot_id=auction_id,

@@ -23,6 +23,9 @@ on:
       market_snapshot_id:
         description: "Optional immutable DATA snapshot id paired with lifecycle_id"
         required: false
+      auction_snapshot_id:
+        description: "Required frozen AUCTION snapshot id for pre-open canonical computation"
+        required: false
       canonical_requested_at:
         description: "Optional governed pre-open canonical request timestamp (ISO-8601)"
         required: false
@@ -49,6 +52,7 @@ jobs:
       EDGE_RESEARCH_BUNDLE_ID: ${{ inputs.research_bundle_id || '' }}
       EDGE_LIFECYCLE_ID: ${{ inputs.lifecycle_id || '' }}
       EDGE_MARKET_SNAPSHOT_ID: ${{ inputs.market_snapshot_id || '' }}
+      EDGE_AUCTION_SNAPSHOT_ID: ${{ inputs.auction_snapshot_id || '' }}
       EDGE_CANONICAL_REQUESTED_AT: ${{ inputs.canonical_requested_at || '' }}
       EDGE_CANONICAL_ATTEMPT_SLOT: ${{ inputs.canonical_attempt_slot || '' }}
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}

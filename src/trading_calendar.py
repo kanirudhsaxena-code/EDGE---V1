@@ -85,6 +85,13 @@ def parse_nse_trading_holidays(payload: Mapping) -> set[date]:
     return set(parse_nse_calendar_entries(payload).trading_holidays)
 
 
+def should_fetch_exact_nse_timing(day: date, entries: NseCalendarEntries) -> bool:
+    """Whether exact timing adds authority for this current-year target."""
+    if day in entries.trading_holidays:
+        return False
+    return day.weekday() < 5 or day in entries.special_timing_dates
+
+
 def parse_nse_market_timing(payload: Mapping, day: date) -> tuple[datetime,datetime] | None:
     if payload.get("status") != "success":
         raise ValueError("market timing payload status is not success")

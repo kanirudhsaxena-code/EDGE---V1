@@ -1,0 +1,73 @@
+name: P0 Stock Lifecycle Schema
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'migrations/010_stock_run_lifecycle.sql'
+      - 'migrations/011_edge_research_bundle_v2.sql'
+      - 'migrations/012_preopen_auction_snapshot.sql'
+      - '.github/workflows/p0-stock-lifecycle-schema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-stock-lifecycle-schema
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply additive lifecycle schema in dependency order
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/010_stock_run_lifecycle.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/011_edge_research_bundle_v2.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/012_preopen_auction_snapshot.sql
+      - name: Verify lifecycle, DATA, RESEARCH and AUCTION lineage schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF to_regclass(current_schema()||'.edge_run_lifecycles') IS NULL THEN
+              RAISE EXCEPTION 'edge_run_lifecycles missing';
+            END IF;
+            IF to_regclass(current_schema()||'.edge_market_snapshots') IS NULL THEN
+              RAISE EXCEPTION 'edge_market_snapshots missing';
+            END IF;
+            IF to_regclass(current_schema()||'.edge_auction_snapshots') IS NULL THEN
+              RAISE EXCEPTION 'edge_auction_snapshots missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+               WHERE table_schema=current_schema()
+                 AND table_name='edge_research_bundles'
+                 AND column_name='lifecycle_id'
+            ) THEN
+              RAISE EXCEPTION 'edge_research_bundles.lifecycle_id missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+               WHERE table_schema=current_schema()
+                 AND table_name='edge_research_bundles'
+                 AND column_name='market_snapshot_id'
+            ) THEN
+              RAISE EXCEPTION 'edge_research_bundles.market_snapshot_id missing';
+            END IF;
+          END $$;
+          SELECT 'P0_STOCK_LIFECYCLE_SCHEMA_PASS' AS status;
+          SQL

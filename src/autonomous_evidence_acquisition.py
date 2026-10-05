@@ -83,3 +83,75 @@ class AutonomousEvidenceAcquirer:
             payloads=payloads,
             gate=gate,
         )
+
+
+def acquired_from_snapshot(
+    market: MarketAcquisition,
+    provider_research,
+    ticker: str,
+    run_at: datetime,
+    *,
+    options_decision_requested: bool = False,
+) -> AcquiredEvidenceBundle:
+    """Build the governed evidence bundle from a previously captured DATA snapshot.
+
+    No provider call occurs here. This is the computation-side enforcement of
+    DATA -> RESEARCH -> COMPUTE: market and provider-research observations must
+    already exist in the immutable snapshot before this function is called.
+    """
+    symbol=ticker.strip().upper()
+    observations=list(market.observations)+list(provider_research.observations)
+    payloads=dict(market.payloads)
+    payloads.update(provider_research.payloads)
+    evidence=tuple(_to_evidence(item) for item in observations)
+    gate=validate_fresh_evidence(
+        symbol,
+        evidence,
+        run_at,
+        options_decision_requested=options_decision_requested,
+    )
+    return AcquiredEvidenceBundle(
+        ticker=symbol,
+        instrument_key=market.instrument_key,
+        evidence=evidence,
+        payloads=payloads,
+        gate=gate,
+    )
+
+
+def with_auction_payload(
+    acquired: AcquiredEvidenceBundle,
+    *,
+    auction_source_ref: str,
+    auction_payload: Mapping,
+    captured_at: datetime,
+) -> AcquiredEvidenceBundle:
+    """Attach the frozen pre-open auction quote to already validated PREP evidence.
+
+    The auction quote is a second-stage market observation, not research. It is
+    deliberately added after DATA-bound research and before computation so the
+    pre-open reference price is attributable to the governed auction window.
+    """
+    evidence=tuple(acquired.evidence)+(EvidenceItem(
+        category="PRICE_STRUCTURE",
+        ticker=acquired.ticker,
+        captured_at=captured_at,
+        source_ref=auction_source_ref,
+        verified=True,
+        payload_ref="EDGE_AUCTION_SNAPSHOT",
+    ),)
+    payloads=dict(acquired.payloads)
+    payloads[auction_source_ref]=dict(auction_payload)
+    gate=validate_fresh_evidence(
+        acquired.ticker,
+        evidence,
+        captured_at,
+        options_decision_requested=False,
+    )
+    return AcquiredEvidenceBundle(
+        ticker=acquired.ticker,
+        instrument_key=acquired.instrument_key,
+        evidence=evidence,
+        payloads=payloads,
+        gate=gate,
+    )

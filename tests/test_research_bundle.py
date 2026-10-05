@@ -130,7 +130,7 @@ def test_missing_independent_component_validation_excludes_provider_score():
     assert by_name["BUSINESS_FUNDAMENTALS"].verified is True
     assert by_name["VALUATION"].verified is False
     assert by_name["VALUATION"].raw_score is None
-    assert "fresh independent ChatGPT web validation was unavailable" in out.component_summaries["VALUATION"][1]
+    assert "fresh independent governed web validation was unavailable" in out.component_summaries["VALUATION"][1]
     assert out.completeness_score == 78.0
 
 
@@ -156,7 +156,7 @@ def test_independently_validated_component_keeps_frozen_provider_score():
     by_name={x.component:x for x in out.component_scores}
     assert by_name["VALUATION"].raw_score == -1
     assert by_name["VALUATION"].verified is True
-    assert "Independent ChatGPT web research validated" in out.component_summaries["VALUATION"][1]
+    assert "Independent governed web research validated" in out.component_summaries["VALUATION"][1]
 
 
 def test_high_materiality_direction_conflict_fails_closed():
@@ -305,3 +305,25 @@ def test_post_reconciliation_evidence_quality_uses_final_evidence_set():
     # Evidence quality is then recomputed from the surviving governed set.
     assert out.completeness_score == 78.0
     assert out.evidence_quality_score == 100.0
+
+
+def test_v2_system_research_requires_lifecycle_snapshot_and_system_web():
+    p=payload()
+    p["contract_version"]="EDGE_RESEARCH_BUNDLE_V2"
+    p["research_authority"]="EDGE_SYSTEM"
+    p["retrieval_providers"]=["SYSTEM_WEB"]
+    p["lifecycle_id"]="EDGE-LC-2026-09-19-TITAN-PREOPEN"
+    p["market_snapshot_id"]="EDGE-MKT-TITAN-20260919-085000-abcdef123456"
+    for source in p["sources"]:
+        source["provider"]="SYSTEM_WEB"
+    p["claims"].extend([
+        {"claim_id":"c3","evidence_category":"VALUATION","statement":"Valuation independently checked.","materiality":"MODERATE","direction":"NEGATIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c4","evidence_category":"INSTITUTIONAL_BEHAVIOUR","statement":"Institutional behaviour independently checked.","materiality":"MODERATE","direction":"POSITIVE","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+        {"claim_id":"c5","evidence_category":"EVENT_SHOCK","statement":"No material event shock identified in bounded evidence.","materiality":"HIGH","direction":"NEUTRAL","source_ids":["s2"],"verification_status":"VERIFIED","independent_validation":True},
+    ])
+    gate=validate_research_bundle_payload(p,ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is True
+    del p["market_snapshot_id"]
+    gate=validate_research_bundle_payload(p,ticker="TITAN",run_at=RUN_AT)
+    assert gate.ready is False
+    assert any("market_snapshot_id" in b for b in gate.blockers)

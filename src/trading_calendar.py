@@ -115,24 +115,25 @@ def classify_exact_nse_session(
     holiday_payload: Mapping,
     timing_payload: Mapping | None,
 ) -> NseExactSession:
-    if day.weekday()>=5:
-        return NseExactSession(day,"WEEKEND",False,None,None)
-
     entries=parse_nse_calendar_entries(holiday_payload)
     timing=parse_nse_market_timing(timing_payload,day) if timing_payload is not None else None
 
+    if day in entries.trading_holidays and timing is not None:
+        raise ValueError("provider conflict: NSE is both closed and timed open")
+
+    if timing is not None:
+        opened,closed=timing
+        standard=opened.time().replace(tzinfo=None)==STANDARD_NSE_OPEN
+        state="TRADING_DAY" if standard else "SPECIAL_TIMING"
+        return NseExactSession(day,state,standard,opened,closed)
+
     if day in entries.trading_holidays:
-        if timing is not None:
-            raise ValueError("provider conflict: NSE is both closed and timed open")
         return NseExactSession(day,"TRADING_HOLIDAY",False,None,None)
-
-    if timing is None:
-        raise ValueError("weekday NSE session lacks exact market timing proof")
-
-    opened,closed=timing
-    standard=opened.time().replace(tzinfo=None)==STANDARD_NSE_OPEN
-    state="TRADING_DAY" if standard else "SPECIAL_TIMING"
-    return NseExactSession(day,state,standard,opened,closed)
+    if day in entries.special_timing_dates:
+        return NseExactSession(day,"SPECIAL_TIMING",False,None,None)
+    if day.weekday()>=5:
+        return NseExactSession(day,"WEEKEND",False,None,None)
+    raise ValueError("weekday NSE session lacks exact market timing proof")
 
 
 G5_CALENDAR_VERSION = "UPSTOX_NSE_CALENDAR_V2_EXACT_CROSS_YEAR"
@@ -190,13 +191,19 @@ def _provider_trading_dates(
         safety+=1
         if safety>50:
             raise RuntimeError("unable to resolve requested provider-verified NSE trading dates")
-        if day.weekday()>=5:
-            day+=timedelta(days=1)
-            continue
-
         if day.year==snapshot_year:
-            if day not in entries.trading_holidays:
+            if day in entries.trading_holidays:
+                day+=timedelta(days=1)
+                continue
+            needs_exact=day.weekday()>=5 or day in entries.special_timing_dates
+            if not needs_exact:
                 out.append(day)
+            else:
+                timing_env=provider.market_timings(day)
+                refs.append(timing_env.source_ref)
+                acquired.append(timing_env.received_at)
+                if parse_nse_market_timing(timing_env.payload,day) is not None:
+                    out.append(day)
         else:
             timing_env=provider.market_timings(day)
             refs.append(timing_env.source_ref)
@@ -264,12 +271,13 @@ def is_nse_trading_day(
     provider: UpstoxReadOnlyStockProvider,
     day: date,
 ) -> bool:
-    if day.weekday() >= 5:
-        return False
     env=provider.market_holidays()
     entries=parse_nse_calendar_entries(env.payload)
     snapshot_year=env.received_at.astimezone(IST).year
     if day.year==snapshot_year:
-        return day not in entries.trading_holidays
+        if day in entries.trading_holidays:
+            return False
+        if day.weekday()<5 and day not in entries.special_timing_dates:
+            return True
     timing=provider.market_timings(day)
     return parse_nse_market_timing(timing.payload,day) is not None

@@ -117,3 +117,41 @@ def acquired_from_snapshot(
         payloads=payloads,
         gate=gate,
     )
+
+
+def with_auction_payload(
+    acquired: AcquiredEvidenceBundle,
+    *,
+    auction_source_ref: str,
+    auction_payload: Mapping,
+    captured_at: datetime,
+) -> AcquiredEvidenceBundle:
+    """Attach the frozen pre-open auction quote to already validated PREP evidence.
+
+    The auction quote is a second-stage market observation, not research. It is
+    deliberately added after DATA-bound research and before computation so the
+    pre-open reference price is attributable to the governed auction window.
+    """
+    evidence=tuple(acquired.evidence)+(EvidenceItem(
+        category="PRICE_STRUCTURE",
+        ticker=acquired.ticker,
+        captured_at=captured_at,
+        source_ref=auction_source_ref,
+        verified=True,
+        payload_ref="EDGE_AUCTION_SNAPSHOT",
+    ),)
+    payloads=dict(acquired.payloads)
+    payloads[auction_source_ref]=dict(auction_payload)
+    gate=validate_fresh_evidence(
+        acquired.ticker,
+        evidence,
+        captured_at,
+        options_decision_requested=False,
+    )
+    return AcquiredEvidenceBundle(
+        ticker=acquired.ticker,
+        instrument_key=acquired.instrument_key,
+        evidence=evidence,
+        payloads=payloads,
+        gate=gate,
+    )

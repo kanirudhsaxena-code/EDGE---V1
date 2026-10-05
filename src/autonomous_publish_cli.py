@@ -224,12 +224,14 @@ def main() -> int:
                 if not lifecycle:
                     print(json.dumps({"status":"BLOCKED_DATA_LINEAGE","diagnostic_code":"LIFECYCLE_NOT_FOUND","ticker":ticker,"lifecycle_id":lifecycle_id,"trading_enabled":False},sort_keys=True))
                     return 3
-                if str(lifecycle[0]).upper()!=ticker or str(lifecycle[1])!="RESEARCH_READY" or str(lifecycle[2] or "")!=market_snapshot_id or str(lifecycle[3] or "")!=research_bundle_id:
+                expected_stage="AUCTION_READY" if canonical_requested_at is not None else "RESEARCH_READY"
+                if str(lifecycle[0]).upper()!=ticker or str(lifecycle[1])!=expected_stage or str(lifecycle[2] or "")!=market_snapshot_id or str(lifecycle[3] or "")!=research_bundle_id:
                     print(json.dumps({
                         "status":"BLOCKED_DATA_LINEAGE",
-                        "diagnostic_code":"LIFECYCLE_NOT_RESEARCH_READY",
+                        "diagnostic_code":"LIFECYCLE_NOT_READY_FOR_COMPUTE",
                         "ticker":ticker,
                         "lifecycle_id":lifecycle_id,
+                        "expected_stage":expected_stage,
                         "stage":str(lifecycle[1]),
                         "market_snapshot_id":str(lifecycle[2] or ""),
                         "research_bundle_id":str(lifecycle[3] or ""),
@@ -254,9 +256,9 @@ def main() -> int:
                        set stage='COMPUTE_PENDING',
                            stage_detail='Governed reconciliation/computation started from run-bound DATA and RESEARCH',
                            updated_at=now()
-                     where lifecycle_id=%s and stage='RESEARCH_READY'
+                     where lifecycle_id=%s and stage=%s
                     """,
-                    (lifecycle_id,),
+                    (lifecycle_id,expected_stage),
                 )
                 if cur.rowcount!=1:
                     raise RuntimeError("lifecycle did not transition RESEARCH_READY -> COMPUTE_PENDING")

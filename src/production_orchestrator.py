@@ -63,6 +63,7 @@ from src.research_bundle import (
     load_governed_research_bundle,
     augment_acquired_evidence_with_research,
     apply_independent_research_validation,
+    independently_verified_event_shock_g5_state,
     ResearchReconciliationError,
 )
 
@@ -257,18 +258,6 @@ def _build_g5_issuance_inputs(
     sector_regime = regime_from_candles(sector_candles)
 
     event_score = _verified_component_raw_score(interpretation, "EVENT_SHOCK")
-    event_state = event_gap_risk_state(
-        event_shock_raw_score=event_score,
-        active_override=shadow.event_override,
-    )
-
-    g5_calendar = fetch_g5_five_nse_trading_dates(
-        market,
-        start_on=local_day,
-    )
-    quote_ref = _stock_quote_source_ref(acquired.payloads, acquired.instrument_key)
-    stock_as_of = latest_candle_as_of(stock_candles)
-    sector_as_of = latest_candle_as_of(sector_candles)
     event_refs = tuple(
         dict.fromkeys(
             evidence.source_ref
@@ -278,8 +267,32 @@ def _build_g5_issuance_inputs(
             and evidence.source_ref.strip()
         )
     )
+    if event_score is None and not shadow.event_override:
+        # Reconciliation may correctly exclude a provider event score when fresh
+        # independent research does not confirm that provider direction. G5 must
+        # not resurrect that score; use the independently verified research state
+        # directly for the path risk input, with its own lineage.
+        try:
+            event_state,event_refs=independently_verified_event_shock_g5_state(
+                governed_research
+            )
+        except ValueError as exc:
+            raise G5InputError(str(exc)) from exc
+    else:
+        event_state = event_gap_risk_state(
+            event_shock_raw_score=event_score,
+            active_override=shadow.event_override,
+        )
     if not event_refs:
         raise G5InputError("G5 Event-Shock lineage is unavailable")
+
+    g5_calendar = fetch_g5_five_nse_trading_dates(
+        market,
+        start_on=local_day,
+    )
+    quote_ref = _stock_quote_source_ref(acquired.payloads, acquired.instrument_key)
+    stock_as_of = latest_candle_as_of(stock_candles)
+    sector_as_of = latest_candle_as_of(sector_candles)
 
     lineage = {
         "p0": lineage_from_source(

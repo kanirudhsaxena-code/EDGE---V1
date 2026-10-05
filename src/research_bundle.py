@@ -17,9 +17,11 @@ from src.shadow_pipeline import AnalystInterpretation
 from src.autonomous_evidence_acquisition import AcquiredEvidenceBundle
 from src.evidence_gate import EvidenceItem, validate_fresh_evidence
 
-CONTRACT_VERSION="EDGE_RESEARCH_BUNDLE_V1"
-RESEARCH_AUTHORITY="CHATGPT"
-MANDATORY_RETRIEVAL_PROVIDER="CHATGPT_WEB"
+CONTRACT_VERSION_V1="EDGE_RESEARCH_BUNDLE_V1"
+CONTRACT_VERSION_V2="EDGE_RESEARCH_BUNDLE_V2"
+SUPPORTED_CONTRACT_VERSIONS={CONTRACT_VERSION_V1,CONTRACT_VERSION_V2}
+RESEARCH_AUTHORITY_V1="CHATGPT"
+RESEARCH_AUTHORITY_V2="EDGE_SYSTEM"
 RESEARCH_SENSITIVE_COMPONENTS={
     "BUSINESS_FUNDAMENTALS",
     "VALUATION",
@@ -44,6 +46,10 @@ class GovernedResearchBundle:
     payload:Mapping[str,Any]
     verified_components:frozenset[str]
     source_refs_by_component:Mapping[str,tuple[str,...]]
+    contract_version:str=CONTRACT_VERSION_V1
+    research_authority:str=RESEARCH_AUTHORITY_V1
+    lifecycle_id:Optional[str]=None
+    market_snapshot_id:Optional[str]=None
 
 
 @dataclass(frozen=True)
@@ -89,19 +95,30 @@ def validate_research_bundle_payload(
     warnings:list[str]=[]
     symbol=ticker.strip().upper()
 
-    if payload.get("contract_version")!=CONTRACT_VERSION:
+    contract=str(payload.get("contract_version",""))
+    authority=str(payload.get("research_authority","")).upper()
+    if contract not in SUPPORTED_CONTRACT_VERSIONS:
         blockers.append("research contract version mismatch")
-    if str(payload.get("research_authority","")).upper()!=RESEARCH_AUTHORITY:
-        blockers.append("research_authority must be CHATGPT")
+    elif contract==CONTRACT_VERSION_V1 and authority!=RESEARCH_AUTHORITY_V1:
+        blockers.append("V1 research_authority must be CHATGPT")
+    elif contract==CONTRACT_VERSION_V2 and authority!=RESEARCH_AUTHORITY_V2:
+        blockers.append("V2 research_authority must be EDGE_SYSTEM")
     if str(payload.get("ticker","")).upper()!=symbol:
         blockers.append("research bundle ticker mismatch")
 
     providers={str(x).upper() for x in payload.get("retrieval_providers",[]) if x}
-    if MANDATORY_RETRIEVAL_PROVIDER not in providers:
-        blockers.append("CHATGPT_WEB research is mandatory")
+    mandatory_provider="CHATGPT_WEB" if contract==CONTRACT_VERSION_V1 else "SYSTEM_WEB"
+    if contract in SUPPORTED_CONTRACT_VERSIONS and mandatory_provider not in providers:
+        blockers.append(f"{mandatory_provider} research is mandatory")
     for p in providers:
-        if p not in {"CHATGPT_WEB","EXA","UPSTOX"}:
+        if p not in {"CHATGPT_WEB","SYSTEM_WEB","EXA","UPSTOX"}:
             blockers.append(f"unknown retrieval provider {p}")
+
+    if contract==CONTRACT_VERSION_V2:
+        if not str(payload.get("lifecycle_id","")).strip():
+            blockers.append("V2 lifecycle_id is required")
+        if not str(payload.get("market_snapshot_id","")).strip():
+            blockers.append("V2 market_snapshot_id is required")
 
     fresh=_aware(payload.get("research_fresh_at"))
     if fresh is None:
@@ -156,7 +173,7 @@ def validate_research_bundle_payload(
             blockers.append(f"claim {i+1} references an unknown source")
             continue
         providers_used={str(x.get("provider","")).upper() for x in used if isinstance(x,Mapping)}
-        independent=bool(providers_used & {"CHATGPT_WEB","EXA"})
+        independent=bool(providers_used & {"CHATGPT_WEB","SYSTEM_WEB","EXA"})
         if materiality in {"HIGH","CRITICAL"} and status=="VERIFIED":
             if raw.get("independent_validation") is not True or not independent:
                 blockers.append(f"claim {i+1} material VERIFIED claim lacks independent web validation")
@@ -215,7 +232,7 @@ def load_governed_research_bundle(
         urls=[]
         for sid in claim.get("source_ids",[]):
             source=source_by_id.get(str(sid))
-            if source and str(source.get("provider","")).upper() in {"CHATGPT_WEB","EXA"}:
+            if source and str(source.get("provider","")).upper() in {"CHATGPT_WEB","SYSTEM_WEB","EXA"}:
                 url=str(source.get("url","")).strip()
                 if url:
                     urls.append(url)
@@ -229,6 +246,10 @@ def load_governed_research_bundle(
         payload=payload,
         verified_components=frozenset(verified),
         source_refs_by_component={k:tuple(dict.fromkeys(v)) for k,v in refs.items()},
+        contract_version=str(payload.get("contract_version") or CONTRACT_VERSION_V1),
+        research_authority=str(payload.get("research_authority") or RESEARCH_AUTHORITY_V1),
+        lifecycle_id=str(payload.get("lifecycle_id")).strip() if payload.get("lifecycle_id") else None,
+        market_snapshot_id=str(payload.get("market_snapshot_id")).strip() if payload.get("market_snapshot_id") else None,
     )
 
 
@@ -288,7 +309,7 @@ def _independent_verified_claims(
         used=[sources.get(str(sid)) for sid in claim.get("source_ids",[])]
         if not any(
             isinstance(source,Mapping)
-            and str(source.get("provider","")).upper() in {"CHATGPT_WEB","EXA"}
+            and str(source.get("provider","")).upper() in {"CHATGPT_WEB","SYSTEM_WEB","EXA"}
             for source in used
         ):
             continue
@@ -361,7 +382,7 @@ def apply_independent_research_validation(
             rows.append(ComponentInput(name,None,verified=False))
             summaries[name]=(
                 "NOT VERIFIED",
-                "Supporting provider evidence was excluded because fresh independent ChatGPT web validation was unavailable."
+                "Supporting provider evidence was excluded because fresh independent governed web validation was unavailable."
             )
             continue
 
@@ -419,7 +440,7 @@ def apply_independent_research_validation(
         })
         direction_text=f" Research direction(s): {', '.join(directions)}." if directions else ""
         suffix=(
-            f" Independent ChatGPT web research validated this component using {count} "
+            f" Independent governed web research validated this component using {count} "
             f"source(s) in {research.bundle_id}.{direction_text}"
         )
         summaries[name]=(prior[0],(prior[1]+suffix).strip())

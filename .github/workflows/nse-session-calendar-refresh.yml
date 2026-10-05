@@ -1,0 +1,58 @@
+name: NSE Session Calendar Refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "Optional NSE session date YYYY-MM-DD; defaults to current IST date"
+        required: false
+  schedule:
+    # Independent resilience refreshes; canonical timing authority remains Cloudflare.
+    - cron: "45 18 * * *"   # 00:15 IST daily
+    - cron: "45 2 * * 1-5" # 08:15 IST weekdays
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nse-session-calendar-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONPATH: .
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      EDGE_SESSION_DATE: ${{ inputs.target_date }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Apply additive calendar schema
+        run: |
+          python - <<'PY'
+          import os, psycopg
+          sql=open("migrations/013_nse_session_calendar.sql","r",encoding="utf-8").read()
+          with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+              with conn.cursor() as cur:
+                  cur.execute(sql)
+              conn.commit()
+          PY
+      - name: Refresh provider calendar and exact session proof
+        run: |
+          set -o pipefail
+          python -m src.nse_calendar_refresh_cli | tee /tmp/nse-calendar-refresh.json
+      - name: Upload bounded calendar proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-session-calendar-refresh
+          path: /tmp/nse-calendar-refresh.json
+          retention-days: 30
+          if-no-files-found: warn

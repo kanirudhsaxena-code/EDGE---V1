@@ -50,6 +50,7 @@ def test_new_ticker_without_report_gets_zero_snapshot():
 
 
 def test_same_day_due_checkpoint_is_not_classified_overdue_by_recovery_query():
+    # 15:00 UTC = 20:30 IST: after cash close, while provider EOD publication may still lag.
     conn=Conn(None,[])
     recover_pre_run_state(
         conn,"LTF",datetime(2026,10,5,15,0,tzinfo=timezone.utc)

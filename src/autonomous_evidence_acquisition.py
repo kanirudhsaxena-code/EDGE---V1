@@ -83,3 +83,37 @@ class AutonomousEvidenceAcquirer:
             payloads=payloads,
             gate=gate,
         )
+
+
+def acquired_from_snapshot(
+    market: MarketAcquisition,
+    provider_research,
+    ticker: str,
+    run_at: datetime,
+    *,
+    options_decision_requested: bool = False,
+) -> AcquiredEvidenceBundle:
+    """Build the governed evidence bundle from a previously captured DATA snapshot.
+
+    No provider call occurs here. This is the computation-side enforcement of
+    DATA -> RESEARCH -> COMPUTE: market and provider-research observations must
+    already exist in the immutable snapshot before this function is called.
+    """
+    symbol=ticker.strip().upper()
+    observations=list(market.observations)+list(provider_research.observations)
+    payloads=dict(market.payloads)
+    payloads.update(provider_research.payloads)
+    evidence=tuple(_to_evidence(item) for item in observations)
+    gate=validate_fresh_evidence(
+        symbol,
+        evidence,
+        run_at,
+        options_decision_requested=options_decision_requested,
+    )
+    return AcquiredEvidenceBundle(
+        ticker=symbol,
+        instrument_key=market.instrument_key,
+        evidence=evidence,
+        payloads=payloads,
+        gate=gate,
+    )

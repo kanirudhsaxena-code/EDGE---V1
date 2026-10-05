@@ -317,6 +317,34 @@ def _independent_verified_claims(
     return tuple(out)
 
 
+def independently_verified_event_shock_g5_state(
+    research:GovernedResearchBundle,
+)->tuple[str,tuple[str,...]]:
+    """Resolve the G5 event-gap state from independent governed research only.
+
+    This is intentionally separate from frozen EDGE component scoring. It never
+    restores or rewrites a provider EVENT_SHOCK score that reconciliation has
+    excluded. Ambiguous/mixed research fails closed.
+    """
+    claims=_independent_verified_claims(research,"EVENT_SHOCK")
+    refs=tuple(dict.fromkeys(research.source_refs_by_component.get("EVENT_SHOCK",())))
+    if not claims or not refs:
+        raise ValueError("G5 Event-Shock independent research is unavailable")
+    directions={
+        str(claim.get("direction","")).strip().upper()
+        for claim in claims
+        if str(claim.get("direction","")).strip()
+    }
+    if directions=={"NEGATIVE"}:
+        return "MODERATE",refs
+    if directions=={"NEUTRAL"}:
+        return "NO_MATERIAL_RISK",refs
+    raise ValueError(
+        "G5 Event-Shock independent research is directionally uncertain: "
+        +(",".join(sorted(directions)) if directions else "NONE")
+    )
+
+
 def _provider_direction(raw_score:Optional[int])->str:
     if raw_score is None:
         return "NOT_AVAILABLE"

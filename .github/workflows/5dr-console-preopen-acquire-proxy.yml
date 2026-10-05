@@ -62,16 +62,6 @@ jobs:
           print("EDGE_CONSOLE_MARKET_EVIDENCE_B64::"+base64.b64encode(raw).decode("ascii"))
           PY
 
-      - name: Publish bounded PREOPEN evidence to EDGE Console
-        env:
-          CONSOLE_URL: ${{ inputs.console_url }}
-          REQUEST_ID: ${{ inputs.request_id }}
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          ENDPOINT="$CONSOLE_URL/api/5dr/run-requests/$REQUEST_ID/automated-market-evidence"
-          curl --location --fail-with-body --silent --show-error             -X POST             -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"             -H "Content-Type: application/json"             --data-binary @fivedr/console_preopen_market_evidence.json             "$ENDPOINT"
-
       - name: Upload bounded PREOPEN artifact
         uses: actions/upload-artifact@v4
         with:
@@ -79,3 +69,38 @@ jobs:
           path: fivedr/console_preopen_market_evidence.json
           retention-days: 30
           if-no-files-found: error
+
+      # Callback is a fast-path only. The governed Console recovery path can
+      # pull the immutable evidence marker from this successful workflow, so
+      # Access/transport failure must never strand otherwise valid PREOPEN data.
+      - name: Publish bounded PREOPEN evidence to EDGE Console
+        continue-on-error: true
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="$CONSOLE_URL/api/5dr/run-requests/$REQUEST_ID/automated-market-evidence"
+          post_auth() {
+            curl --location --fail-with-body --silent --show-error \
+              -X POST \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H "Content-Type: application/json" \
+              --data-binary @fivedr/console_preopen_market_evidence.json \
+              "$ENDPOINT"
+          }
+          post_public() {
+            curl --location --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Content-Type: application/json" \
+              --data-binary @fivedr/console_preopen_market_evidence.json \
+              "$ENDPOINT"
+          }
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            post_auth || post_public
+          else
+            post_public
+          fi

@@ -411,6 +411,16 @@ def build_production_candidate(
         )
 
     if lifecycle_id and market_snapshot_id:
+        if (
+            governed_research.contract_version!="EDGE_RESEARCH_BUNDLE_V2"
+            or governed_research.lifecycle_id!=lifecycle_id
+            or governed_research.market_snapshot_id!=market_snapshot_id
+        ):
+            return ProductionCandidateResult(
+                "BLOCKED_RESEARCH_LINEAGE",
+                ("research bundle is not bound to the current lifecycle market snapshot",),
+                None,None,None,
+            )
         try:
             stored_snapshot=load_market_snapshot(
                 connection,market_snapshot_id,ticker=ticker,lifecycle_id=lifecycle_id

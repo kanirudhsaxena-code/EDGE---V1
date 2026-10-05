@@ -4,11 +4,12 @@ Authority hierarchy:
 1. Exact Upstox exchange timing for dates outside the provider's current-year
    holiday snapshot or for same-day session proof.
 2. Upstox current-year holiday snapshot for ordinary current-year date math.
-3. Weekends are always closed.
+3. Day-of-week is never sufficient authority: ordinary weekends are closed,
+   while an exchange-declared weekend live session can be proven open by exact
+   market timing.
 
 SPECIAL_TIMING remains a trading session for D:D+4 date selection, but the
-pre-open scheduler may separately reject it when the standard 09:15 opening
-window does not apply.
+standard 09:15 pre-open path requires exact standard-opening eligibility.
 """
 from __future__ import annotations
 

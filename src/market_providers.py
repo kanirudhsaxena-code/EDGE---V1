@@ -104,6 +104,10 @@ def _stage_label(path: str) -> str:
         return "INSTRUMENT_SEARCH"
     if path in {"/v2/market-quote/quotes", "/v3/market-quote/quotes"}:
         return "MARKET_QUOTE"
+    if path == "/v2/market/holidays" or path.startswith("/v2/market/holidays/"):
+        return "MARKET_HOLIDAYS"
+    if path.startswith("/v2/market/timings/"):
+        return "MARKET_TIMINGS"
     if path == "/v2/option/contract":
         return "OPTION_CONTRACT"
     if path == "/v2/option/chain":
@@ -188,6 +192,8 @@ class UpstoxReadOnlyStockProvider:
             "/v3/historical-candle/intraday/",
             "/v3/historical-candle/",
             "/v2/historical-candle/",
+            "/v2/market/holidays/",
+            "/v2/market/timings/",
         )
         if path not in allowed_exact and not any(path.startswith(p) for p in allowed_prefixes):
             raise AcquisitionError("ENDPOINT_NOT_PERMITTED")
@@ -394,6 +400,12 @@ class UpstoxReadOnlyStockProvider:
 
     def market_holidays(self) -> ProviderEnvelope:
         return self._get("/v2/market/holidays")
+
+    def market_holiday(self, day: date) -> ProviderEnvelope:
+        return self._get(f"/v2/market/holidays/{day.isoformat()}")
+
+    def market_timings(self, day: date) -> ProviderEnvelope:
+        return self._get(f"/v2/market/timings/{day.isoformat()}")
 
     def option_contracts(self, instrument_key: str) -> ProviderEnvelope:
         return self._get("/v2/option/contract", {"instrument_key": instrument_key})

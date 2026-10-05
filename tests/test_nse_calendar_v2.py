@@ -33,6 +33,14 @@ def test_exact_standard_session_is_preopen_eligible():
     assert s.state=="TRADING_DAY"
     assert s.preopen_eligible is True
 
+def test_weekend_standard_live_session_can_be_preopen_eligible():
+    d=date(2026,2,1)
+    h=holidays([{"date":"2026-02-01","holiday_type":"SPECIAL_TIMING","closed_exchanges":[],"open_exchanges":[{"exchange":"NSE"}]}])
+    p=timings([{"exchange":"NSE","start_time":ms("2026-02-01T09:15:00+05:30"),"end_time":ms("2026-02-01T15:30:00+05:30")}])
+    s=classify_exact_nse_session(d,h,p)
+    assert s.state=="TRADING_DAY"
+    assert s.preopen_eligible is True
+
 def test_special_timing_session_is_not_standard_preopen_eligible():
     d=date(2026,11,12)
     h=holidays([{"date":"2026-11-12","holiday_type":"SPECIAL_TIMING","closed_exchanges":[],"open_exchanges":[{"exchange":"NSE"}]}])
@@ -59,7 +67,7 @@ class CrossYearProvider:
         return Env(holidays([]),datetime(2026,12,30,tzinfo=timezone.utc),"holiday-ref")
     def market_timings(self,day):
         # Jan 1 is closed (no NSE timing); Jan 2 and Jan 4/5 are open.
-        rows=[] if day==date(2027,1,1) else [{"exchange":"NSE","start_time":ms(f"{day.isoformat()}T09:15:00+05:30"),"end_time":ms(f"{day.isoformat()}T15:30:00+05:30")}]
+        rows=[] if day==date(2027,1,1) or day.weekday()>=5 else [{"exchange":"NSE","start_time":ms(f"{day.isoformat()}T09:15:00+05:30"),"end_time":ms(f"{day.isoformat()}T15:30:00+05:30")}]
         return Env(timings(rows),datetime(2026,12,30,tzinfo=timezone.utc),f"timing-{day}")
 
 def test_g5_cross_year_dates_use_exact_future_year_timings():

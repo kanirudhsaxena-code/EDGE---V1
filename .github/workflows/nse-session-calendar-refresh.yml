@@ -1,6 +1,14 @@
 name: NSE Session Calendar Refresh
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'migrations/013_nse_session_calendar.sql'
+      - 'src/nse_calendar_refresh_cli.py'
+      - 'src/trading_calendar.py'
+      - 'src/market_providers.py'
+      - '.github/workflows/nse-session-calendar-refresh.yml'
   workflow_dispatch:
     inputs:
       target_date:

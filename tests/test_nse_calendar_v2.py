@@ -7,6 +7,7 @@ from src.trading_calendar import (
     fetch_g5_five_nse_trading_dates,
     parse_nse_calendar_entries,
     parse_nse_market_timing,
+    should_fetch_exact_nse_timing,
 )
 
 def ms(iso):
@@ -25,6 +26,17 @@ def test_calendar_entries_keep_closed_and_special_separate():
     ]))
     assert e.trading_holidays==frozenset({date(2026,10,20)})
     assert e.special_timing_dates==frozenset({date(2026,11,12)})
+
+
+def test_exact_timing_fetch_policy_avoids_closed_day_noise_but_keeps_weekend_specials():
+    entries=parse_nse_calendar_entries(holidays([
+        {"date":"2026-10-20","holiday_type":"TRADING_HOLIDAY","closed_exchanges":["NSE"],"open_exchanges":[]},
+        {"date":"2026-02-01","holiday_type":"SPECIAL_TIMING","closed_exchanges":[],"open_exchanges":[{"exchange":"NSE"}]},
+    ]))
+    assert should_fetch_exact_nse_timing(date(2026,10,20),entries) is False
+    assert should_fetch_exact_nse_timing(date(2026,10,6),entries) is True
+    assert should_fetch_exact_nse_timing(date(2026,10,3),entries) is False
+    assert should_fetch_exact_nse_timing(date(2026,2,1),entries) is True
 
 def test_exact_standard_session_is_preopen_eligible():
     d=date(2026,10,6)

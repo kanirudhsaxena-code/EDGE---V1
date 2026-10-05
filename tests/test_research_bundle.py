@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from src.evidence_gate import EvidenceItem
@@ -6,6 +7,7 @@ from src.research_bundle import (
     GovernedResearchBundle,
     ResearchReconciliationError,
     apply_independent_research_validation,
+    independently_verified_event_shock_g5_state,
     validate_research_bundle_payload,
 )
 from src.shadow_pipeline import AnalystInterpretation
@@ -327,3 +329,59 @@ def test_v2_system_research_requires_lifecycle_snapshot_and_system_web():
     gate=validate_research_bundle_payload(p,ticker="TITAN",run_at=RUN_AT)
     assert gate.ready is False
     assert any("market_snapshot_id" in b for b in gate.blockers)
+
+
+def _event_research(direction: str):
+    p=payload()
+    p["claims"].append({
+        "claim_id":"event-g5",
+        "evidence_category":"EVENT_SHOCK",
+        "statement":"Independent governed Event-Shock assessment.",
+        "materiality":"HIGH",
+        "direction":direction,
+        "source_ids":["s2"],
+        "verification_status":"VERIFIED",
+        "independent_validation":True,
+    })
+    return GovernedResearchBundle(
+        bundle_id="EDGE-RESEARCH-TITAN-EVENT-G5",
+        ticker="TITAN",
+        research_fresh_at=datetime(2026,9,19,8,55,tzinfo=timezone.utc),
+        payload=p,
+        verified_components=frozenset({"EVENT_SHOCK"}),
+        source_refs_by_component={"EVENT_SHOCK":("https://www.nseindia.com/example",)},
+    )
+
+
+def test_g5_uses_verified_neutral_event_research_after_provider_score_is_excluded():
+    base=interpretation()
+    rows=tuple(
+        ComponentInput(row.component,-1 if row.component=="EVENT_SHOCK" else row.raw_score,row.verified)
+        for row in base.component_scores
+    )
+    provider=replace(base,component_scores=rows)
+    research=_event_research("NEUTRAL")
+    reconciled=apply_independent_research_validation(provider,research)
+    event=next(row for row in reconciled.component_scores if row.component=="EVENT_SHOCK")
+    assert event.raw_score is None
+    assert event.verified is False
+    state,refs=independently_verified_event_shock_g5_state(research)
+    assert state=="NO_MATERIAL_RISK"
+    assert refs==("https://www.nseindia.com/example",)
+
+
+def test_g5_maps_verified_negative_event_research_to_moderate_without_rewriting_edge_score():
+    research=_event_research("NEGATIVE")
+    state,refs=independently_verified_event_shock_g5_state(research)
+    assert state=="MODERATE"
+    assert refs==("https://www.nseindia.com/example",)
+
+
+def test_g5_fails_closed_on_uncertain_independent_event_research():
+    research=_event_research("BINARY_UNCERTAIN")
+    try:
+        independently_verified_event_shock_g5_state(research)
+    except ValueError as exc:
+        assert "directionally uncertain" in str(exc)
+    else:
+        raise AssertionError("uncertain Event-Shock research must fail closed")

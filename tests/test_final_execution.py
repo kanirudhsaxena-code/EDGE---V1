@@ -83,6 +83,8 @@ def test_directional_missing_structure_fails_to_actionable_trade():
     r=reconcile_with_structure(s,weak,holding_status_known=False)
     assert r.decision.definitive_recommendation=="NO TRADE"
     assert r.execution_plan.instrument=="NONE"
+    assert r.execution_plan.execution_quality_score==0
+    assert r.execution_plan.execution_quality_level=="NOT_EXECUTABLE"
     diagnostics=json.loads(r.execution_plan.notes)
     assert diagnostics["candidate_instrument"]=="NONE"
     assert diagnostics["dominant_rejection_reason"]=="execution quality unacceptable"

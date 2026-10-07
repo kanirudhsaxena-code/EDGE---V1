@@ -29,7 +29,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build3-intraday-truth-${{ inputs.engine }}-${{ inputs.source_id }}-${{ inputs.session_date }}
@@ -40,6 +40,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -104,20 +107,66 @@ jobs:
           print(f"captured {len(candles)} one-minute candles")
           PY
 
-      - name: Publish immutable truth source to Build 3
+      - name: Publish immutable truth handoff to state branch
         env:
-          CONSOLE_URL: ${{ inputs.console_url }}
-          CF_ACCESS_CLIENT_ID_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
-          CF_ACCESS_CLIENT_ID_OLD: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET_OLD: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          ENGINE: ${{ inputs.engine }}
+          SOURCE_ID: ${{ inputs.source_id }}
+          INSTRUMENT_KEY: ${{ inputs.instrument_key }}
+          SESSION_DATE: ${{ inputs.session_date }}
         run: |
           set -euo pipefail
-          CLIENT_ID="${CF_ACCESS_CLIENT_ID_NEW:-${CF_ACCESS_CLIENT_ID_OLD:-}}"
-          CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET_NEW:-${CF_ACCESS_CLIENT_SECRET_OLD:-}}"
-          test -n "$CLIENT_ID"
-          test -n "$CLIENT_SECRET"
-          curl --location --fail-with-body --silent --show-error             -X POST             -H "CF-Access-Client-Id: $CLIENT_ID"             -H "CF-Access-Client-Secret: $CLIENT_SECRET"             -H "Content-Type: application/json"             --data-binary @build3_intraday_truth.json             "$CONSOLE_URL/api/build3/recommendation-intraday-source"
+          HANDOFF_KEY="$(python - <<'PY'
+          import hashlib,os
+          identity='|'.join([
+              os.environ['ENGINE'].strip(),
+              os.environ['SOURCE_ID'].strip(),
+              os.environ['INSTRUMENT_KEY'].strip(),
+              os.environ['SESSION_DATE'].strip(),
+          ])
+          print(hashlib.sha256(identity.encode()).hexdigest())
+          PY
+          )"
+          python - "$HANDOFF_KEY" <<'PY'
+          import json,sys
+          path='build3_intraday_truth.json'
+          d=json.load(open(path,encoding='utf-8'))
+          d['handoff_version']='MDOS_BUILD_3_TRUTH_HANDOFF_V1'
+          d['handoff_key']=sys.argv[1]
+          with open(path,'w',encoding='utf-8') as fh:
+              json.dump(d,fh,separators=(',',':'))
+          PY
+
+          git fetch origin state/build3-truth
+          rm -rf /tmp/build3-truth-state
+          git worktree add /tmp/build3-truth-state origin/state/build3-truth
+          cd /tmp/build3-truth-state
+          mkdir -p runtime/build3-truth
+          DEST="runtime/build3-truth/$HANDOFF_KEY.json"
+          if [ -f "$DEST" ]; then
+            cmp -s "$GITHUB_WORKSPACE/build3_intraday_truth.json" "$DEST" || {
+              echo "immutable handoff conflict for $HANDOFF_KEY"
+              exit 1
+            }
+            echo "truth handoff already published: $HANDOFF_KEY"
+            exit 0
+          fi
+          cp "$GITHUB_WORKSPACE/build3_intraday_truth.json" "$DEST"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEST"
+          git commit -m "Publish Build 3 truth handoff $HANDOFF_KEY [skip ci]"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:state/build3-truth; then
+              echo "BUILD3_TRUTH_HANDOFF_PUBLISHED=$HANDOFF_KEY"
+              exit 0
+            fi
+            git fetch origin state/build3-truth
+            git rebase origin/state/build3-truth
+            sleep 2
+          done
+          echo "truth handoff push failed after retries"
+          exit 1
 
       - name: Upload bounded audit artifact
         uses: actions/upload-artifact@v4

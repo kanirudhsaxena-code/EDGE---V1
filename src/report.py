@@ -175,7 +175,7 @@ def render_standard_edge_report(
         f"| Market Trust | {_fmt(recommendation.market_trust_score,1)} / {_escape(recommendation.market_trust_band)} | DES {_fmt(recommendation.des,1)} | Evidence confidence + directional balance |",
         f"| BOT Hunter | {_fmt(recommendation.bot_score,1)} / {_escape(recommendation.bot_grade)} | {_escape(recommendation.decision_ladder)} | Opportunity quality / commitment state |",
         f"| Definitive Recommendation | {_escape(recommendation.definitive_recommendation)} | {_escape(ep.instrument)} | Final EDGE decision |",
-        f"| Entry | {_escape(entry)} | {_escape(ep.invalidation_text or unavailable_reason if ep.instrument=='NONE' else 'N/A')} | {_escape(entry_interpretation)} |",
+        f"| Entry | {_escape(entry)} | {_escape(ep.invalidation_text or (unavailable_reason if ep.instrument=='NONE' else 'N/A'))} | {_escape(entry_interpretation)} |",
         f"| Risk Control | Stop {_fmt(ep.stop_price)} | {_escape(ep.risk_unit_category or 'N/A')} | {_escape(risk_interpretation)} |",
         f"| Targets | {_escape(targets)} | R:R T1 {_fmt(ep.rr_t1)} / T2 {_fmt(ep.rr_t2)} | {_escape(target_interpretation)} |",
         f"| Rejection Diagnostics | {_escape(rejection_reason or 'N/A')} | {_escape(failed_gate_text)} | Exact failed gates retained for non-actionable decisions |",

@@ -138,7 +138,8 @@ def test_canonical_bundle_persists_research_conflict_flag_without_score_inventio
     valuation=next(row for row in b.component_scores if row.component=="VALUATION")
     assert valuation.raw_score is None
     assert valuation.availability_status=="NOT_VERIFIED"
-    assert valuation.conflict_flag is True\n    assert valuation.evidence_quality=="CONFLICTED"
+    assert valuation.conflict_flag is True
+    assert valuation.evidence_quality=="CONFLICTED"
 
 
 def test_canonical_bundle_preserves_verified_evidence_when_provider_score_is_excluded():

@@ -1,0 +1,128 @@
+name: Build 3 Recommendation Intraday Truth
+run-name: Build 3 1m Truth · ${{ inputs.source_id }} · ${{ inputs.session_date }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: Build 3 engine identity
+        required: true
+        type: choice
+        options:
+          - 5DR
+          - EDGE_STOCKS
+      source_id:
+        description: Frozen Build 3 decision source ID
+        required: true
+        type: string
+      instrument_key:
+        description: Frozen Upstox provider instrument key
+        required: true
+        type: string
+      session_date:
+        description: Governed NSE session YYYY-MM-DD
+        required: true
+        type: string
+      console_url:
+        description: EDGE Console base URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build3-intraday-truth-${{ inputs.engine }}-${{ inputs.source_id }}-${{ inputs.session_date }}
+  cancel-in-progress: false
+
+jobs:
+  acquire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Acquire exact 1-minute Upstox candles
+        env:
+          ENGINE: ${{ inputs.engine }}
+          SOURCE_ID: ${{ inputs.source_id }}
+          INSTRUMENT_KEY: ${{ inputs.instrument_key }}
+          SESSION_DATE: ${{ inputs.session_date }}
+          UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+          from zoneinfo import ZoneInfo
+
+          engine=os.environ["ENGINE"].strip()
+          source_id=os.environ["SOURCE_ID"].strip()
+          key=os.environ["INSTRUMENT_KEY"].strip()
+          session=os.environ["SESSION_DATE"].strip()
+          token=os.environ["UPSTOX_ANALYTICS_TOKEN"].strip()
+          if engine not in {"5DR","EDGE_STOCKS"}:
+              raise SystemExit("invalid engine")
+          datetime.strptime(session,"%Y-%m-%d")
+          if not key or not source_id or not token:
+              raise SystemExit("required acquisition identity/token missing")
+
+          encoded=urllib.parse.quote(key,safe="")
+          today=datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+          if session==today:
+              path=f"/v3/historical-candle/intraday/{encoded}/minutes/1"
+              mode="intraday"
+          else:
+              path=f"/v3/historical-candle/{encoded}/minutes/1/{session}/{session}"
+              mode="historical"
+          url="https://api.upstox.com"+path
+          req=urllib.request.Request(url,headers={
+              "Accept":"application/json",
+              "Authorization":f"Bearer {token}",
+              "User-Agent":"MDOS-Build3-Recommendation-Truth/1.0",
+          })
+          with urllib.request.urlopen(req,timeout=30) as response:
+              raw=json.load(response)
+          candles=((raw.get("data") or {}).get("candles") or [])
+          if not isinstance(candles,list) or not candles:
+              raise SystemExit("Upstox returned no one-minute candles")
+          if len(candles)>600:
+              raise SystemExit("Upstox candle payload exceeds governed bound")
+          payload={
+              "engine":engine,
+              "source_id":source_id,
+              "provider_instrument_key":key,
+              "session_date":session,
+              "captured_at":datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),
+              "source_ref":f"upstox:v3:{mode}:minutes:1:{key}:{session}",
+              "candles":candles,
+          }
+          with open("build3_intraday_truth.json","w",encoding="utf-8") as fh:
+              json.dump(payload,fh,separators=(",",":"))
+          print(f"captured {len(candles)} one-minute candles")
+          PY
+
+      - name: Publish immutable truth source to Build 3
+        env:
+          CONSOLE_URL: ${{ inputs.console_url }}
+          CF_ACCESS_CLIENT_ID_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+          CF_ACCESS_CLIENT_ID_OLD: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET_OLD: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          CLIENT_ID="${CF_ACCESS_CLIENT_ID_NEW:-${CF_ACCESS_CLIENT_ID_OLD:-}}"
+          CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET_NEW:-${CF_ACCESS_CLIENT_SECRET_OLD:-}}"
+          test -n "$CLIENT_ID"
+          test -n "$CLIENT_SECRET"
+          curl --location --fail-with-body --silent --show-error             -X POST             -H "CF-Access-Client-Id: $CLIENT_ID"             -H "CF-Access-Client-Secret: $CLIENT_SECRET"             -H "Content-Type: application/json"             --data-binary @build3_intraday_truth.json             "$CONSOLE_URL/api/build3/recommendation-intraday-source"
+
+      - name: Upload bounded audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build3-intraday-truth-${{ inputs.source_id }}-${{ inputs.session_date }}
+          path: build3_intraday_truth.json
+          retention-days: 30
+          if-no-files-found: error

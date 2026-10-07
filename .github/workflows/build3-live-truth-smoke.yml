@@ -22,8 +22,10 @@ jobs:
     env:
       UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
       CONSOLE_URL: https://build-3-0-accuracy-loop-20261006-edge-console.k-anirudhsaxena.workers.dev
-      CF_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
-      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      CF_ACCESS_CLIENT_ID_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      CF_ACCESS_CLIENT_ID_OLD: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET_OLD: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -74,10 +76,14 @@ jobs:
       - name: Prove authenticated provider to Console callback
         run: |
           set -euo pipefail
+          CLIENT_ID="${CF_ACCESS_CLIENT_ID_NEW:-${CF_ACCESS_CLIENT_ID_OLD:-}}"
+          CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET_NEW:-${CF_ACCESS_CLIENT_SECRET_OLD:-}}"
+          test -n "$CLIENT_ID"
+          test -n "$CLIENT_SECRET"
           curl --location --fail-with-body --silent --show-error \
             -X POST \
-            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H "CF-Access-Client-Id: $CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CLIENT_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @truth-smoke-input.json \
             "$CONSOLE_URL/api/build3/truth-smoke" > truth-smoke-response.json

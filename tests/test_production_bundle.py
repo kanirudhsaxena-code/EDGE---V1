@@ -139,3 +139,30 @@ def test_canonical_bundle_persists_research_conflict_flag_without_score_inventio
     assert valuation.raw_score is None
     assert valuation.availability_status=="NOT_VERIFIED"
     assert valuation.conflict_flag is True
+    assert valuation.evidence_quality=="CONFLICTED"
+
+
+def test_canonical_bundle_preserves_verified_evidence_when_provider_score_is_excluded():
+    s=shadow()
+    rows=tuple(
+        ComponentInput(row.component,None,False) if row.component=="BUSINESS_FUNDAMENTALS" else row
+        for row in s.component_scores
+    )
+    s2=ShadowComputation(**{
+        **s.__dict__,
+        "component_scores":rows,
+        "component_summaries":{
+            "BUSINESS_FUNDAMENTALS":(
+                "VERIFIED · EXCLUDED FROM SCORE",
+                "Independent governed research is verified but provider component score is unavailable."
+            )
+        },
+    })
+    b=build_canonical_bundle(s2,meta())
+    row=next(x for x in b.component_scores if x.component=="BUSINESS_FUNDAMENTALS")
+    assert row.raw_score is None
+    assert row.availability_status=="NOT_VERIFIED"
+    assert row.evidence_quality=="HIGH"
+    assert row.conflict_flag is False
+    assert '"evidence_verification": "VERIFIED"' in row.notes
+    assert '"score_eligibility": "EXCLUDED"' in row.notes

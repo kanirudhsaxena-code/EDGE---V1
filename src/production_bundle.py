@@ -73,27 +73,47 @@ def build_canonical_bundle(
         raise ValueError("decision_ladder is required")
 
     des = compute_des(shadow.component_scores)
-    component_rows = tuple(
-        ComponentScoreWrite(
+
+    def component_semantics(row):
+        summary=shadow.component_summaries.get(row.component, (row.availability_status, ""))
+        key_outcome=str(summary[0] or row.availability_status)
+        interpretation=str(summary[1] or "")
+        outcome_upper=key_outcome.upper()
+        score_eligible=row.availability_status=="AVAILABLE" and row.raw_score is not None
+        if score_eligible or outcome_upper.startswith("VERIFIED"):
+            evidence_verification="VERIFIED"
+            evidence_quality="HIGH"
+        elif outcome_upper.startswith("CONFLICTED"):
+            evidence_verification="CONFLICTED"
+            evidence_quality="CONFLICTED"
+        else:
+            evidence_verification="NOT_VERIFIED"
+            evidence_quality="NOT_VERIFIED"
+        return summary,evidence_verification,evidence_quality,score_eligible
+
+    component_rows_list=[]
+    for row in des.components:
+        summary,evidence_verification,evidence_quality,score_eligible=component_semantics(row)
+        component_rows_list.append(ComponentScoreWrite(
             component=row.component,
             original_weight=row.original_weight,
             raw_score=row.raw_score,
             normalized_direction=row.normalized_direction,
-            evidence_quality="HIGH" if row.availability_status == "AVAILABLE" else "NOT_VERIFIED",
+            evidence_quality=evidence_quality,
             availability_status=row.availability_status,
             normalized_weight=row.normalized_weight,
             weighted_contribution=row.weighted_contribution,
-            conflict_flag=(
-                shadow.component_summaries.get(row.component, ("", ""))[0] == "CONFLICTED"
-            ),
+            conflict_flag=(evidence_verification=="CONFLICTED"),
             gate_override_flag=shadow.event_override,
             notes=json.dumps({
-                "key_outcome": shadow.component_summaries.get(row.component, (row.availability_status, ""))[0],
-                "interpretation": shadow.component_summaries.get(row.component, (row.availability_status, ""))[1],
-            }, sort_keys=True) if row.component in shadow.component_summaries else None,
-        )
-        for row in des.components
-    )
+                "key_outcome": summary[0],
+                "interpretation": summary[1],
+                "evidence_verification": evidence_verification,
+                "score_eligibility": "INCLUDED" if score_eligible else "EXCLUDED",
+                "score_exclusion_reason": None if score_eligible else (summary[1] or "Component is not eligible for frozen scoring."),
+            }, sort_keys=True),
+        ))
+    component_rows=tuple(component_rows_list)
 
     final_execution_quality = metadata.execution_plan.execution_quality_score
     if final_execution_quality is None:

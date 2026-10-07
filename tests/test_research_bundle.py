@@ -206,7 +206,7 @@ def test_moderate_direction_conflict_is_excluded_not_neutralized():
     by_name={x.component:x for x in out.component_scores}
     assert by_name["VALUATION"].verified is False
     assert by_name["VALUATION"].raw_score is None
-    assert out.component_summaries["VALUATION"][0]=="CONFLICTED"
+    assert out.component_summaries["VALUATION"][0]=="CONFLICTED · EXCLUDED FROM SCORE"
     assert "excluded rather than neutralized or overwritten" in out.component_summaries["VALUATION"][1]
 
 
@@ -252,8 +252,26 @@ def test_binary_uncertain_research_excludes_directional_provider_without_conflic
     row=next(x for x in out.component_scores if x.component=="BUSINESS_FUNDAMENTALS")
     assert row.raw_score is None
     assert row.verified is False
-    assert out.component_summaries["BUSINESS_FUNDAMENTALS"][0]=="NOT VERIFIED"
+    assert out.component_summaries["BUSINESS_FUNDAMENTALS"][0]=="VERIFIED · EXCLUDED FROM SCORE"
     assert "not independently confirmed" in out.component_summaries["BUSINESS_FUNDAMENTALS"][1]
+
+
+def test_verified_research_with_missing_provider_score_remains_verified_but_excluded():
+    base=interpretation()
+    rows=tuple(
+        ComponentInput(row.component,None,False)
+        if row.component=="BUSINESS_FUNDAMENTALS" else row
+        for row in base.component_scores
+    )
+    provider=replace(base,component_scores=rows)
+    research=governed(("BUSINESS_FUNDAMENTALS",))
+    out=apply_independent_research_validation(provider,research)
+    row=next(x for x in out.component_scores if x.component=="BUSINESS_FUNDAMENTALS")
+    assert row.raw_score is None
+    assert row.verified is False
+    assert out.component_summaries["BUSINESS_FUNDAMENTALS"][0]=="VERIFIED · EXCLUDED FROM SCORE"
+    assert "provider component score is unavailable" in out.component_summaries["BUSINESS_FUNDAMENTALS"][1]
+    assert "Evidence verification remains VERIFIED" in out.component_summaries["BUSINESS_FUNDAMENTALS"][1]
 
 
 def test_neutral_research_validates_neutral_provider_score():
@@ -282,7 +300,7 @@ def test_directional_research_does_not_falsely_validate_neutral_provider():
     row=next(x for x in out.component_scores if x.component=="NEWS_EVENTS_CATALYSTS")
     assert row.raw_score is None
     assert row.verified is False
-    assert out.component_summaries["NEWS_EVENTS_CATALYSTS"][0]=="NOT VERIFIED"
+    assert out.component_summaries["NEWS_EVENTS_CATALYSTS"][0]=="VERIFIED · EXCLUDED FROM SCORE"
 
 
 def test_post_reconciliation_evidence_quality_uses_final_evidence_set():

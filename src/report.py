@@ -12,6 +12,7 @@ Detailed scoring mathematics and evidence records remain in the audit layer.
 """
 from __future__ import annotations
 
+import json
 from typing import Mapping, Optional
 
 from src.assessment_context import AssessmentContext
@@ -33,6 +34,16 @@ def _pct(value):
 
 def _escape(value) -> str:
     return _fmt(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _json_notes(value) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed=json.loads(value)
+        return parsed if isinstance(parsed,dict) else {}
+    except (TypeError,ValueError,json.JSONDecodeError):
+        return {}
 
 
 def render_standard_edge_report(
@@ -122,6 +133,39 @@ def render_standard_edge_report(
             f"expiry {_fmt(ep.option_expiry)} | premium {_fmt(ep.observed_premium)}"
         )
 
+    execution_notes=_json_notes(ep.notes)
+    rejection_reason=execution_notes.get("dominant_rejection_reason")
+    gates=execution_notes.get("gate_results") if isinstance(execution_notes.get("gate_results"),list) else []
+    failed_gates=[gate for gate in gates if isinstance(gate,dict) and str(gate.get("status","")).upper()=="FAIL"]
+    structure_reason=next(
+        (str(gate.get("reason")) for gate in failed_gates if gate.get("gate")=="STRUCTURE" and gate.get("reason")),
+        None,
+    )
+    unavailable_reason=structure_reason or rejection_reason or ep.invalidation_text or "No complete governed candidate level was persisted."
+    entry_interpretation=(
+        f"Candidate execution only; final action is {recommendation.definitive_recommendation}"
+        if ep.instrument=="NONE" and (ep.entry_low is not None or ep.entry_high is not None)
+        else (
+            f"Not executable — {unavailable_reason}"
+            if ep.instrument=="NONE"
+            else "Direct recommended execution"
+        )
+    )
+    risk_interpretation=(
+        f"Not executable — {unavailable_reason}" if ep.instrument=="NONE" and ep.stop_price is None
+        else "Maximum defined thesis risk"
+    )
+    target_interpretation=(
+        f"Not executable — {unavailable_reason}" if ep.instrument=="NONE" and ep.target1 is None and ep.target2 is None
+        else "Reward path"
+    )
+    failed_gate_text=(
+        "; ".join(
+            f"{gate.get('gate')}: {gate.get('reason') or 'failed governed threshold'}"
+            for gate in failed_gates
+        ) or "None"
+    )
+
     table3=[
         "| CURRENT STOCK OUTCOME | EDGE Output | Execution / Level | Interpretation |",
         "|---|---|---|---|",
@@ -131,9 +175,10 @@ def render_standard_edge_report(
         f"| Market Trust | {_fmt(recommendation.market_trust_score,1)} / {_escape(recommendation.market_trust_band)} | DES {_fmt(recommendation.des,1)} | Evidence confidence + directional balance |",
         f"| BOT Hunter | {_fmt(recommendation.bot_score,1)} / {_escape(recommendation.bot_grade)} | {_escape(recommendation.decision_ladder)} | Opportunity quality / commitment state |",
         f"| Definitive Recommendation | {_escape(recommendation.definitive_recommendation)} | {_escape(ep.instrument)} | Final EDGE decision |",
-        f"| Entry | {_escape(entry)} | {_escape(ep.invalidation_text or 'N/A')} | Direct recommended execution |",
-        f"| Risk Control | Stop {_fmt(ep.stop_price)} | {_escape(ep.risk_unit_category or 'N/A')} | Maximum defined thesis risk |",
-        f"| Targets | {_escape(targets)} | R:R T1 {_fmt(ep.rr_t1)} / T2 {_fmt(ep.rr_t2)} | Reward path |",
+        f"| Entry | {_escape(entry)} | {_escape(ep.invalidation_text or (unavailable_reason if ep.instrument=='NONE' else 'N/A'))} | {_escape(entry_interpretation)} |",
+        f"| Risk Control | Stop {_fmt(ep.stop_price)} | {_escape(ep.risk_unit_category or 'N/A')} | {_escape(risk_interpretation)} |",
+        f"| Targets | {_escape(targets)} | R:R T1 {_fmt(ep.rr_t1)} / T2 {_fmt(ep.rr_t2)} | {_escape(target_interpretation)} |",
+        f"| Rejection Diagnostics | {_escape(rejection_reason or 'N/A')} | {_escape(failed_gate_text)} | Exact failed gates retained for non-actionable decisions |",
         f"| Options Contract | {_escape(contract)} | {_escape(ep.option_suitability_status or 'N/A')} | N/A when options branch is gated |",
         f"| Event Risk | {_escape(recommendation.event_shock_level)} | {_escape(recommendation.active_override or 'Normal')} | Near-term shock constraint |",
     ]
@@ -194,7 +239,13 @@ def render_standard_edge_report(
                 if row.raw_score is not None:
                     score=str(row.raw_score)
             summary=summaries.get(key)
-            verified=(row is not None and row.availability_status=="AVAILABLE" and row.evidence_quality!="NOT_VERIFIED")
+            evidence_quality=str(row.evidence_quality).upper() if row is not None and row.evidence_quality is not None else "NOT_VERIFIED"
+            verified=(row is not None and evidence_quality not in {"NOT_VERIFIED","NOT_AVAILABLE","N/A","CONFLICTED"})
+            conflicted=(row is not None and evidence_quality=="CONFLICTED")
+            if row is not None and row.raw_score is None and verified:
+                score="N/A · Excluded from Score"
+            elif row is not None and row.raw_score is None and conflicted:
+                score="N/A · Conflicted / Excluded from Score"
             if verified:
                 if (
                     summary is None

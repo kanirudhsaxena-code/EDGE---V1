@@ -160,9 +160,22 @@ def test_report_has_no_narrative_outside_tables():
         assert line.startswith("|")
 
 
-def test_no_trade_plan_can_leave_entry_stop_targets_na():
-    text=render()
-    assert "| Entry | N/A | N/A |" in text
+def test_no_trade_plan_explains_unavailable_entry_stop_targets():
+    b=bundle()
+    b=CanonicalRecommendationWrite(**{
+        **b.__dict__,
+        "execution_plan":ExecutionPlanWrite(
+            instrument="NONE",risk_unit_category="0",
+            execution_quality_score=0,execution_quality_level="NOT_EXECUTABLE",
+            option_suitability_status="NO OPTION TRADE",
+            notes='{"candidate_instrument":"NONE","dominant_rejection_reason":"base/range has no directional edge","gate_results":[{"gate":"DIRECTIONAL_EDGE","status":"FAIL","threshold":"BULLISH or BEARISH","reason":"base/range has no directional edge"},{"gate":"STRUCTURE","status":"FAIL","threshold":"verified candidate structure","reason":"verified candidate execution structure is unavailable"}]}',
+        ),
+    })
+    text=render_standard_edge_report(
+        b,assessment(),component_summaries=summaries(),forecast_path=forecast_path()
+    )
+    assert "| Entry | N/A | verified candidate execution structure is unavailable | Not executable" in text
+    assert "| Rejection Diagnostics | base/range has no directional edge | DIRECTIONAL_EDGE:" in text
     assert "| Options Contract | N/A | NO OPTION TRADE |" in text
 
 
@@ -193,3 +206,30 @@ def test_verified_component_without_persisted_semantics_fails_closed():
         assert "missing persisted evidence-grounded narrative" in str(exc)
     else:
         raise AssertionError("VERIFIED component without persisted semantics must fail closed")
+
+
+def test_verified_evidence_can_render_as_score_excluded_without_becoming_not_verified():
+    b=bundle()
+    comps=tuple(
+        ComponentScoreWrite(
+            x.component,x.original_weight,
+            None if x.component=="BUSINESS_FUNDAMENTALS" else x.raw_score,
+            x.normalized_direction,
+            "HIGH" if x.component=="BUSINESS_FUNDAMENTALS" else x.evidence_quality,
+            "NOT_VERIFIED" if x.component=="BUSINESS_FUNDAMENTALS" else x.availability_status,
+            None if x.component=="BUSINESS_FUNDAMENTALS" else x.normalized_weight,
+            None if x.component=="BUSINESS_FUNDAMENTALS" else x.weighted_contribution,
+            notes='{"evidence_verification":"VERIFIED","score_eligibility":"EXCLUDED","score_exclusion_reason":"provider score unavailable"}'
+            if x.component=="BUSINESS_FUNDAMENTALS" else x.notes,
+        )
+        for x in b.component_scores
+    )
+    b=CanonicalRecommendationWrite(**{**b.__dict__,"component_scores":comps})
+    s=summaries()
+    s["BUSINESS_FUNDAMENTALS"]=(
+        "VERIFIED · EXCLUDED FROM SCORE",
+        "Independent evidence is verified; provider score unavailable under frozen methodology.",
+    )
+    text=render_standard_edge_report(b,assessment(),component_summaries=s,forecast_path=forecast_path())
+    assert "| Business & Fundamentals | N/A · Excluded from Score | VERIFIED · EXCLUDED FROM SCORE |" in text
+    assert "Not Verified" not in next(line for line in text.splitlines() if "Business & Fundamentals" in line)

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from src.autonomous_runner import RecommendationEnvelope
@@ -47,6 +48,11 @@ def test_current_ltf_base_range_reconciles_to_investigation_and_no_trade_for_unk
     assert r.decision.decision_ladder=="INVESTIGATION"
     assert r.decision.definitive_recommendation=="NO TRADE"
     assert r.execution_plan.instrument=="NONE"
+    assert r.execution_plan.execution_quality_score==0
+    assert r.execution_plan.execution_quality_level=="NOT_EXECUTABLE"
+    diagnostics=json.loads(r.execution_plan.notes)
+    assert diagnostics["dominant_rejection_reason"]=="base/range has no directional edge"
+    assert any(g["gate"]=="DIRECTIONAL_EDGE" and g["status"]=="FAIL" for g in diagnostics["gate_results"])
 
 
 def test_current_ltf_base_range_reconciles_to_hold_for_confirmed_holder():
@@ -77,3 +83,34 @@ def test_directional_missing_structure_fails_to_actionable_trade():
     r=reconcile_with_structure(s,weak,holding_status_known=False)
     assert r.decision.definitive_recommendation=="NO TRADE"
     assert r.execution_plan.instrument=="NONE"
+    assert r.execution_plan.execution_quality_score==0
+    assert r.execution_plan.execution_quality_level=="NOT_EXECUTABLE"
+    diagnostics=json.loads(r.execution_plan.notes)
+    assert diagnostics["candidate_instrument"]=="NONE"
+    assert diagnostics["dominant_rejection_reason"]=="execution quality unacceptable"
+    assert "Insufficient verified support/resistance" in r.execution_plan.invalidation_text
+    assert any(g["gate"]=="STRUCTURE" and g["status"]=="FAIL" for g in diagnostics["gate_results"])
+
+
+def test_rejected_directional_candidate_retains_entry_stop_targets_and_rr():
+    s=shadow("BULLISH",bull=75,base=20,bear=5,bot=80,grade="A+")
+    weak_rr=MarketStructureContext(
+        close=302.3,
+        supports=(300.0,),
+        resistances=(303.0,304.0),
+        median_true_range=7.0,
+        pattern_name="BREAKOUT",
+    )
+    r=reconcile_with_structure(s,weak_rr,holding_status_known=False)
+    assert r.rr_primary is not None and r.rr_primary < 1.2
+    assert r.decision.definitive_recommendation=="NO TRADE"
+    assert r.execution_plan.instrument=="NONE"
+    assert r.execution_plan.entry_low==302.3
+    assert r.execution_plan.stop_price==300.0
+    assert r.execution_plan.target1==303.0
+    assert r.execution_plan.target2==304.0
+    assert r.execution_plan.rr_t1==r.rr_primary
+    diagnostics=json.loads(r.execution_plan.notes)
+    assert diagnostics["candidate_instrument"]=="EQUITY"
+    assert diagnostics["dominant_rejection_reason"]=="R:R below 1.2"
+    assert any(g["gate"]=="R_R" and g["status"]=="FAIL" for g in diagnostics["gate_results"])

@@ -275,6 +275,29 @@ def decide_action(
         option_candidate=None
 
     actionable=action in {"STRONG BUY","BUY","ACCUMULATE","SELL","REDUCE"}
+    dominant_reason=opt_reason
+    if not actionable and dominant_reason is None:
+        if f=="BULLISH":
+            if grade=="C":
+                dominant_reason="BOT grade C does not qualify for a bullish entry"
+            elif grade=="A" and market_trust < 55:
+                dominant_reason="Market Trust below 55 for bullish A-grade entry"
+            elif grade=="A" and execution_quality_score < 60:
+                dominant_reason="execution quality below 60 for bullish A-grade entry"
+            elif grade in {"A+","A++"} and market_trust < 70:
+                dominant_reason="Market Trust below 70 for bullish A+/A++ entry"
+            elif grade in {"A+","A++"} and execution_quality_score < 75:
+                dominant_reason="execution quality below 75 for bullish A+/A++ entry"
+            else:
+                dominant_reason="bullish setup did not satisfy the frozen action gate"
+        else:
+            if not holding_status_known or not holding_exists:
+                dominant_reason=(
+                    "bearish equity view has no long-holding exit to execute; "
+                    "short-equity execution is not permitted"
+                )
+            else:
+                dominant_reason="bearish setup did not satisfy the frozen action gate"
     return DecisionExecutionResult(
         decision_ladder=ladder,
         risk_unit_category=risk,
@@ -283,5 +306,5 @@ def decide_action(
         options_suitability_status=opt_status,
         execution_quality_level=rr_level,
         actionable=actionable,
-        downgrade_reason=opt_reason,
+        downgrade_reason=dominant_reason,
     )

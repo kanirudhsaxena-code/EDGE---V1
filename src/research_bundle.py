@@ -409,8 +409,8 @@ def apply_independent_research_validation(
         if name not in research.verified_components:
             rows.append(ComponentInput(name,None,verified=False))
             summaries[name]=(
-                "NOT VERIFIED",
-                "Supporting provider evidence was excluded because fresh independent governed web validation was unavailable."
+                "NOT VERIFIED · EXCLUDED FROM SCORE",
+                "Supporting provider score was excluded because fresh independent governed web validation was unavailable."
             )
             continue
 
@@ -438,8 +438,8 @@ def apply_independent_research_validation(
                 material_blockers.append(message)
             rows.append(ComponentInput(name,None,verified=False))
             summaries[name]=(
-                "CONFLICTED",
-                message+"; provider score excluded rather than neutralized or overwritten."
+                "CONFLICTED · EXCLUDED FROM SCORE",
+                message+"; independent evidence truth is retained, while the provider score is excluded rather than neutralized or overwritten."
             )
             continue
 
@@ -451,11 +451,22 @@ def apply_independent_research_validation(
                 if str(claim.get("direction","")).strip()
             })
             rows.append(ComponentInput(name,None,verified=False))
+            if row.raw_score is None:
+                exclusion_reason=(
+                    f"{name} independent governed research is VERIFIED in {research.bundle_id}, "
+                    "but the provider component score is unavailable; the score is excluded under "
+                    "the frozen missing-data rules. Evidence verification remains VERIFIED."
+                )
+            else:
+                exclusion_reason=(
+                    f"{name} independent governed research is VERIFIED in {research.bundle_id}, "
+                    f"but provider direction {provider_direction} was not independently confirmed "
+                    f"by research directions {research_directions or ['NONE']}; the provider score is "
+                    "excluded under the frozen missing-data rules. Evidence verification remains VERIFIED."
+                )
             summaries[name]=(
-                "NOT VERIFIED",
-                f"{name} provider direction {provider_direction} was not independently confirmed "
-                f"by fresh research directions {research_directions or ['NONE']} in {research.bundle_id}; "
-                "provider score excluded under the frozen missing-data rules."
+                "VERIFIED · EXCLUDED FROM SCORE",
+                exclusion_reason,
             )
             continue
 

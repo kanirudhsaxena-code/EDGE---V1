@@ -1,0 +1,107 @@
+name: Build 3 Live Truth Smoke
+
+on:
+  push:
+    branches:
+      - build-3.0-accuracy-loop-20261006
+    paths:
+      - '.github/workflows/build3-live-truth-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build3-live-truth-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      CONSOLE_URL: https://build-3-0-accuracy-loop-20261006-edge-console.k-anirudhsaxena.workers.dev
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Acquire live Upstox one-minute NIFTY truth
+        env:
+          SOURCE_ID: truth-smoke-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$UPSTOX_ANALYTICS_TOKEN"
+          python - <<'PY'
+          import json,os,urllib.parse,urllib.request
+          from datetime import datetime,timezone
+          from zoneinfo import ZoneInfo
+
+          key='NSE_INDEX|Nifty 50'
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          session=now.date().isoformat()
+          encoded=urllib.parse.quote(key,safe='')
+          url=f'https://api.upstox.com/v3/historical-candle/intraday/{encoded}/minutes/1'
+          req=urllib.request.Request(url,headers={
+              'Accept':'application/json',
+              'Authorization':f'Bearer {os.environ["UPSTOX_ANALYTICS_TOKEN"]}',
+              'User-Agent':'MDOS-Build3-Live-Truth-Smoke/1.0',
+          })
+          with urllib.request.urlopen(req,timeout=30) as response:
+              raw=json.load(response)
+          candles=((raw.get('data') or {}).get('candles') or [])
+          if not isinstance(candles,list) or not candles:
+              raise SystemExit('Upstox returned no live one-minute candles')
+          if len(candles)>600:
+              raise SystemExit('Upstox live candle payload exceeds governed bound')
+          body={
+              'engine':'5DR',
+              'instrument':'NIFTY',
+              'source_id':os.environ['SOURCE_ID'],
+              'provider_instrument_key':key,
+              'session_date':session,
+              'captured_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
+              'source_ref':f'upstox:v3:intraday:minutes:1:{key}:{session}:build3-smoke',
+              'candles':candles,
+          }
+          json.dump(body,open('truth-smoke-input.json','w',encoding='utf-8'),separators=(',',':'))
+          print(f'LIVE_TRUTH_ACQUIRED candles={len(candles)} session={session}')
+          PY
+
+      - name: Prove authenticated provider to Console callback
+        run: |
+          set -euo pipefail
+          curl --location --fail-with-body --silent --show-error \
+            -X POST \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @truth-smoke-input.json \
+            "$CONSOLE_URL/api/build3/truth-smoke" > truth-smoke-response.json
+          cat truth-smoke-response.json
+          python - <<'PY'
+          import json
+          d=json.load(open('truth-smoke-response.json'))
+          assert d.get('version')=='MDOS_BUILD_3_TRUTH_SMOKE_V1',d
+          assert d.get('status')=='PASS',d
+          assert d.get('live_provider_payload_valid') is True,d
+          assert d.get('callback_authenticated') is True,d
+          assert d.get('persistence_applied') is False,d
+          assert d.get('writes_performed')==0,d
+          assert int(d.get('candle_count') or 0)>0,d
+          assert d.get('provider_instrument_key')=='NSE_INDEX|Nifty 50',d
+          print('BUILD3_LIVE_TRUTH_SMOKE=PASS')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build3-live-truth-smoke
+          path: |
+            truth-smoke-input.json
+            truth-smoke-response.json
+          retention-days: 30
+          if-no-files-found: warn

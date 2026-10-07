@@ -1,0 +1,148 @@
+name: Build 3 Live Truth Smoke
+
+on:
+  push:
+    branches:
+      - build-3.0-accuracy-loop-20261006
+    paths:
+      - '.github/workflows/build3-live-truth-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build3-live-truth-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      UPSTOX_ANALYTICS_TOKEN: ${{ secrets.UPSTOX_ANALYTICS_TOKEN }}
+      CONSOLE_URL: https://build-3-0-accuracy-loop-20261006-edge-console.k-anirudhsaxena.workers.dev
+      CF_ACCESS_CLIENT_ID_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET_NEW: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+      CF_ACCESS_CLIENT_ID_OLD: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET_OLD: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Acquire live Upstox one-minute NIFTY truth
+        env:
+          SOURCE_ID: truth-smoke-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$UPSTOX_ANALYTICS_TOKEN"
+          python - <<'PY'
+          import json,os,urllib.parse,urllib.request
+          from datetime import datetime,timezone
+          from zoneinfo import ZoneInfo
+
+          key='NSE_INDEX|Nifty 50'
+          now=datetime.now(ZoneInfo('Asia/Kolkata'))
+          session=now.date().isoformat()
+          encoded=urllib.parse.quote(key,safe='')
+          url=f'https://api.upstox.com/v3/historical-candle/intraday/{encoded}/minutes/1'
+          req=urllib.request.Request(url,headers={
+              'Accept':'application/json',
+              'Authorization':f'Bearer {os.environ["UPSTOX_ANALYTICS_TOKEN"]}',
+              'User-Agent':'MDOS-Build3-Live-Truth-Smoke/1.0',
+          })
+          with urllib.request.urlopen(req,timeout=30) as response:
+              raw=json.load(response)
+          candles=((raw.get('data') or {}).get('candles') or [])
+          if not isinstance(candles,list) or not candles:
+              raise SystemExit('Upstox returned no live one-minute candles')
+          if len(candles)>600:
+              raise SystemExit('Upstox live candle payload exceeds governed bound')
+          body={
+              'engine':'5DR',
+              'instrument':'NIFTY',
+              'source_id':os.environ['SOURCE_ID'],
+              'provider_instrument_key':key,
+              'session_date':session,
+              'captured_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
+              'source_ref':f'upstox:v3:intraday:minutes:1:{key}:{session}:build3-smoke',
+              'candles':candles,
+          }
+          json.dump(body,open('truth-smoke-input.json','w',encoding='utf-8'),separators=(',',':'))
+          print(f'LIVE_TRUTH_ACQUIRED candles={len(candles)} session={session}')
+          PY
+
+      - name: Publish smoke payload to Build 3 truth state handoff
+        env:
+          ENGINE: 5DR
+          SOURCE_ID: truth-smoke-${{ github.sha }}
+          INSTRUMENT_KEY: NSE_INDEX|Nifty 50
+        run: |
+          set -euo pipefail
+          SESSION_DATE="$(python - <<'PY'
+          import json
+          print(json.load(open('truth-smoke-input.json'))['session_date'])
+          PY
+          )"
+          export SESSION_DATE
+          HANDOFF_KEY="$(python - <<'PY'
+          import hashlib,os
+          identity='|'.join([
+              os.environ['ENGINE'].strip(),
+              os.environ['SOURCE_ID'].strip(),
+              os.environ['INSTRUMENT_KEY'].strip(),
+              os.environ['SESSION_DATE'].strip(),
+          ])
+          print(hashlib.sha256(identity.encode()).hexdigest())
+          PY
+          )"
+          python - "$HANDOFF_KEY" <<'PY'
+          import json,sys
+          path='truth-smoke-input.json'
+          d=json.load(open(path,encoding='utf-8'))
+          d['handoff_version']='MDOS_BUILD_3_TRUTH_HANDOFF_V1'
+          d['handoff_key']=sys.argv[1]
+          with open('build3_intraday_truth.json','w',encoding='utf-8') as fh:
+              json.dump(d,fh,separators=(',',':'))
+          PY
+
+          git fetch origin state/build3-truth
+          rm -rf /tmp/build3-truth-smoke-state
+          git worktree add /tmp/build3-truth-smoke-state origin/state/build3-truth
+          cd /tmp/build3-truth-smoke-state
+          mkdir -p runtime/build3-truth
+          DEST="runtime/build3-truth/$HANDOFF_KEY.json"
+          if [ -f "$DEST" ]; then
+            cmp -s "$GITHUB_WORKSPACE/build3_intraday_truth.json" "$DEST" || exit 1
+            echo "BUILD3_TRUTH_SMOKE_HANDOFF_EXISTS=$HANDOFF_KEY"
+            exit 0
+          fi
+          cp "$GITHUB_WORKSPACE/build3_intraday_truth.json" "$DEST"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$DEST"
+          git commit -m "Publish Build 3 truth smoke $HANDOFF_KEY [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:state/build3-truth; then
+              echo "BUILD3_TRUTH_SMOKE_HANDOFF_PUBLISHED=$HANDOFF_KEY"
+              exit 0
+            fi
+            git fetch origin state/build3-truth
+            git rebase origin/state/build3-truth
+            sleep 2
+          done
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build3-live-truth-smoke
+          path: |
+            truth-smoke-input.json
+            build3_intraday_truth.json
+          retention-days: 30
+          if-no-files-found: warn

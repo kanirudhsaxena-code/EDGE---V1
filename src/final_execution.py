@@ -213,13 +213,13 @@ def reconcile_with_structure(
             instrument="NONE",
             risk_unit_category="0",
             time_exit="Frozen forecast horizon",
-            execution_quality_score=60,
-            execution_quality_level="ADEQUATE",
+            execution_quality_score=0,
+            execution_quality_level="NOT_EXECUTABLE",
             option_suitability_status="NO OPTION TRADE",
-            notes="No directional equity execution required for this forecast/holding state.",
+            notes="No directional candidate execution exists for this forecast/holding state.",
         )
         rr=None
-        exec_q=60.0
+        exec_q=0.0
 
     leading=max(shadow.bull_probability,shadow.base_probability,shadow.bear_probability)
     final_bot=bot_hunter(BotInputs(
@@ -251,17 +251,99 @@ def reconcile_with_structure(
         }
     )
 
-    # If final decision is non-actionable, execution must not masquerade as a
-    # live entry plan. Preserve audit note but remove trade levels.
+    # A non-actionable decision must not masquerade as a live order, but the
+    # candidate assessment must remain auditable and visible. Keep candidate
+    # levels/invalidation/R:R and change only the final instrument/action state.
     if decision.definitive_recommendation in {"HOLD","AVOID","NO TRADE"}:
+        candidate_instrument=plan.instrument
+        directional=forecast in {"BULLISH","BEARISH"}
+        structure_available=(
+            candidate_instrument!="NONE"
+            and (
+                candidate_instrument=="EQUITY_EXIT"
+                or (
+                    plan.entry_low is not None
+                    and plan.stop_price is not None
+                    and plan.target1 is not None
+                    and plan.target2 is not None
+                )
+            )
+        )
+        gates=[
+            {
+                "gate":"DIRECTIONAL_EDGE",
+                "status":"PASS" if directional else "FAIL",
+                "observed":forecast,
+                "threshold":"BULLISH or BEARISH",
+                "reason":None if directional else "base/range has no directional edge",
+            },
+            {
+                "gate":"STRUCTURE",
+                "status":"PASS" if structure_available else "FAIL",
+                "observed":candidate_instrument,
+                "threshold":"verified candidate entry/invalidation/target structure",
+                "reason":None if structure_available else (
+                    plan.invalidation_text
+                    or "verified candidate execution structure is unavailable"
+                ),
+            },
+            {
+                "gate":"R_R",
+                "status":(
+                    "N/A" if not directional or rr is None
+                    else ("PASS" if rr>=1.2 else "FAIL")
+                ),
+                "observed":rr,
+                "threshold":">=1.2R",
+                "reason":(
+                    "R:R unavailable because no complete directional candidate exists"
+                    if directional and rr is None
+                    else ("R:R below 1.2" if rr is not None and rr<1.2 else None)
+                ),
+            },
+            {
+                "gate":"EXECUTION_QUALITY",
+                "status":"PASS" if exec_q>=40 else "FAIL",
+                "observed":exec_q,
+                "threshold":">=40 minimum action gate",
+                "reason":None if exec_q>=40 else "execution quality unacceptable",
+            },
+            {
+                "gate":"EVENT_OVERRIDE",
+                "status":"PASS" if shadow.event_override not in {"O2","O3"} else "FAIL",
+                "observed":shadow.event_override or "CLEAR",
+                "threshold":"no blocking O2/O3 override",
+                "reason":(
+                    f"{shadow.event_override} event override blocks this action"
+                    if shadow.event_override in {"O2","O3"} else None
+                ),
+            },
+            {
+                "gate":"OPTIONS",
+                "status":"PASS" if decision.options_suitability_status=="SUITABLE" else "FAIL",
+                "observed":decision.options_suitability_status,
+                "threshold":"SUITABLE for an options expression",
+                "reason":(
+                    None if decision.options_suitability_status=="SUITABLE"
+                    else "options suitability/contract gate did not pass"
+                ),
+            },
+        ]
+        diagnostics={
+            "candidate_instrument":candidate_instrument,
+            "final_instrument":"NONE",
+            "dominant_rejection_reason":decision.downgrade_reason or plan.invalidation_text or plan.notes or "non-actionable decision",
+            "gate_results":gates,
+        }
         plan=ExecutionPlanWrite(
-            instrument="NONE",
-            risk_unit_category="0",
-            time_exit="Frozen forecast horizon",
-            execution_quality_score=exec_q,
-            execution_quality_level=plan.execution_quality_level,
-            option_suitability_status=decision.options_suitability_status,
-            notes=decision.downgrade_reason or plan.notes,
+            **{
+                **plan.__dict__,
+                "instrument":"NONE",
+                "risk_unit_category":"0",
+                "time_exit":plan.time_exit or "Frozen forecast horizon",
+                "option_suitability_status":decision.options_suitability_status,
+                "notes":json.dumps(diagnostics,sort_keys=True),
+            }
         )
 
     return FinalExecutionDecision(

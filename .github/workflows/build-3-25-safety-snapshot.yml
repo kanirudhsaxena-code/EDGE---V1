@@ -20,11 +20,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare PostgreSQL 17 client
         run: docker pull postgres:17
-      - name: Capture bounded EDGE Stocks safety snapshot
+      - name: Capture bounded safety snapshot
         run: |
           set -euo pipefail
           test -n "$DATABASE_URL"
-          pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
+          docker run --rm postgres:17 pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
             -t public.edge_runs \
             -t public.recommendations \
             -t public.recommendation_lifecycle \
@@ -35,8 +35,8 @@ jobs:
             -t public.edge_stock_forecast_path_rows \
             -t public.outcome_checkpoints \
             -t public.efficacy_results \
-            -f /work/build-3-25-edge-stocks-safety.dump
-          psql "$DATABASE_URL" -At -F ',' -c "
+            > build-3-25-edge-stocks-safety.dump
+          docker run --rm postgres:17 psql "$DATABASE_URL" -At -F ',' -c "
             select 'recommendations',count(*) from recommendations union all
             select 'recommendation_lifecycle',count(*) from recommendation_lifecycle union all
             select 'recommendation_performance',count(*) from recommendation_performance union all

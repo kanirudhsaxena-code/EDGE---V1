@@ -1,0 +1,67 @@
+name: Build 3.25 EDGE Stocks Safety Snapshot
+
+on:
+  push:
+    branches: [build-3.25-data-integrity-20261008]
+    paths:
+      - '.github/workflows/build-3-25-safety-snapshot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare PostgreSQL 17 client
+        run: docker pull postgres:17
+      - name: Capture bounded safety snapshot
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "${DATABASE_URL:-}"
+          # Write the custom-format dump on the runner, not in an unmounted container /work path.
+          docker run --rm postgres:17 pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
+            -t public.edge_runs \
+            -t public.recommendations \
+            -t public.recommendation_lifecycle \
+            -t public.recommendation_performance \
+            -t public.edge_recommendation_governance \
+            -t public.edge_canonical_selections \
+            -t public.edge_stock_forecast_paths \
+            -t public.edge_stock_forecast_path_rows \
+            -t public.outcome_checkpoints \
+            -t public.efficacy_results \
+            > build-3-25-edge-stocks-safety.dump
+          test -s build-3-25-edge-stocks-safety.dump
+          # Reject truncated/invalid backup bytes before declaring the safety gate green.
+          docker run -i --rm postgres:17 pg_restore --list < build-3-25-edge-stocks-safety.dump > /dev/null
+          docker run --rm postgres:17 psql "$DATABASE_URL" -At -F ',' -c "
+            select 'recommendations',count(*) from recommendations union all
+            select 'recommendation_lifecycle',count(*) from recommendation_lifecycle union all
+            select 'recommendation_performance',count(*) from recommendation_performance union all
+            select 'governance',count(*) from edge_recommendation_governance union all
+            select 'canonical_selections',count(*) from edge_canonical_selections union all
+            select 'forecast_paths',count(*) from edge_stock_forecast_paths union all
+            select 'forecast_path_rows',count(*) from edge_stock_forecast_path_rows union all
+            select 'outcome_checkpoints',count(*) from outcome_checkpoints union all
+            select 'efficacy_results',count(*) from efficacy_results
+          " > build-3-25-edge-stocks-safety-counts.csv
+          sha256sum build-3-25-edge-stocks-safety.dump build-3-25-edge-stocks-safety-counts.csv > build-3-25-edge-stocks-safety.sha256
+          cat build-3-25-edge-stocks-safety-counts.csv
+          cat build-3-25-edge-stocks-safety.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-3-25-edge-stocks-safety-snapshot
+          # GitHub CI retains the non-sensitive verification manifest only.
+          # A durable, access-controlled restore point is required in Neon before any cleanup deletion.
+          path: |
+            build-3-25-edge-stocks-safety-counts.csv
+            build-3-25-edge-stocks-safety.sha256
+          retention-days: 30
+          if-no-files-found: error

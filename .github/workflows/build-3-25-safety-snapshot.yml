@@ -23,7 +23,9 @@ jobs:
       - name: Capture bounded safety snapshot
         run: |
           set -euo pipefail
-          test -n "$DATABASE_URL"
+          umask 077
+          test -n "${DATABASE_URL:-}"
+          # Write the custom-format dump on the runner, not in an unmounted container /work path.
           docker run --rm postgres:17 pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges \
             -t public.edge_runs \
             -t public.recommendations \
@@ -36,6 +38,9 @@ jobs:
             -t public.outcome_checkpoints \
             -t public.efficacy_results \
             > build-3-25-edge-stocks-safety.dump
+          test -s build-3-25-edge-stocks-safety.dump
+          # Reject truncated/invalid backup bytes before declaring the safety gate green.
+          docker run -i --rm postgres:17 pg_restore --list < build-3-25-edge-stocks-safety.dump > /dev/null
           docker run --rm postgres:17 psql "$DATABASE_URL" -At -F ',' -c "
             select 'recommendations',count(*) from recommendations union all
             select 'recommendation_lifecycle',count(*) from recommendation_lifecycle union all

@@ -58,8 +58,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: build-3-25-edge-stocks-safety-snapshot
+          # GitHub CI retains the non-sensitive verification manifest only.
+          # A durable, access-controlled restore point is required in Neon before any cleanup deletion.
           path: |
-            build-3-25-edge-stocks-safety.dump
             build-3-25-edge-stocks-safety-counts.csv
             build-3-25-edge-stocks-safety.sha256
           retention-days: 30

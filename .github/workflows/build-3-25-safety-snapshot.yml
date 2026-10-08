@@ -35,7 +35,7 @@ jobs:
             -t public.edge_stock_forecast_path_rows \
             -t public.outcome_checkpoints \
             -t public.efficacy_results \
-            -f build-3-25-edge-stocks-safety.dump
+            -f /work/build-3-25-edge-stocks-safety.dump
           psql "$DATABASE_URL" -At -F ',' -c "
             select 'recommendations',count(*) from recommendations union all
             select 'recommendation_lifecycle',count(*) from recommendation_lifecycle union all

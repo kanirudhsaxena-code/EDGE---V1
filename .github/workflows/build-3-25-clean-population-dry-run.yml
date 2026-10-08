@@ -1,0 +1,49 @@
+name: Build 3.25 EDGE Stocks Clean Population Dry Run
+
+on:
+  push:
+    branches: [build-3.25-data-integrity-20261008]
+    paths:
+      - 'migrations/013_build_3_25_clean_efficacy_population.sql'
+      - '.github/workflows/build-3-25-clean-population-dry-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare PostgreSQL 17 client
+        run: docker pull postgres:17
+      - name: Apply migration inside rollback-only transaction
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          {
+            echo 'begin;'
+            cat migrations/013_build_3_25_clean_efficacy_population.sql
+            echo "\\copy (select total_recommendations,selected_benchmark_count,official_scorable_count,provisional_open_count,repair_pending_count,audit_incomplete_count,all_run_diagnostic_count,nonofficial_other_count,coalesce(official_resolved_coverage_pct::text,'') from v_build_3_25_edge_stock_population_summary) to stdout with csv"
+            echo 'rollback;'
+          } | docker run -i --rm postgres:17 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 > /tmp/tx.log
+          grep -E '^[0-9]+,' /tmp/tx.log | tail -1 > /tmp/summary.csv
+          cat /tmp/summary.csv
+      - name: Validate expected population
+        run: |
+          python - <<'PY'
+          line=open('/tmp/summary.csv').read().strip().split(',')
+          assert len(line)==9,line
+          total,selected,official,provisional,repair,audit,allrun,other,coverage=line
+          assert int(total)==100,(total,line)
+          assert int(selected)>=19,(selected,line)
+          assert int(official)==0,(official,line)
+          assert int(repair)==0,(repair,line)
+          assert int(audit)>=19,(audit,line)
+          assert int(allrun)==59,(allrun,line)
+          print('BUILD_3_25_EDGE_STOCKS_CLEAN_POPULATION_DRY_RUN=PASS')
+          PY

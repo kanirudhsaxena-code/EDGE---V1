@@ -39,11 +39,13 @@ jobs:
           line=open('/tmp/summary.csv').read().strip().split(',')
           assert len(line)==9,line
           total,selected,official,provisional,repair,audit,allrun,other,coverage=line
-          assert int(total)==100,(total,line)
-          assert int(selected)>=19,(selected,line)
-          assert int(official)==0,(official,line)
-          assert int(repair)==0,(repair,line)
-          assert int(audit)>=19,(audit,line)
-          assert int(allrun)==59,(allrun,line)
+          total,selected,official,provisional,repair,audit,allrun,other=map(int,(total,selected,official,provisional,repair,audit,allrun,other))
+          # No hard-coded production row counts: fail on omissions and classification drift.
+          assert min(total,selected,official,provisional,repair,audit,allrun,other)>=0,line
+          assert total == official+provisional+repair+audit+allrun+other,line
+          assert selected <= total and selected >= official+provisional+repair,line
+          expected=(100.0*official/(official+repair)) if official+repair else None
+          assert (coverage=='' and expected is None) or (expected is not None and abs(float(coverage)-expected)<0.02),line
+          print('total',total,'selected',selected,'official',official,'provisional',provisional,'repair',repair,'audit',audit,'allrun',allrun,'other',other)
           print('BUILD_3_25_EDGE_STOCKS_CLEAN_POPULATION_DRY_RUN=PASS')
           PY

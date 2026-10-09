@@ -8,6 +8,7 @@ select oc.recommendation_id,
        oc.status as checkpoint_status,
        p.selected_benchmark,
        p.population_state as recommendation_population,
+       p.tracking_policy,
        (oc.due_date < (now() at time zone 'Asia/Kolkata')::date
          or (oc.due_date=(now() at time zone 'Asia/Kolkata')::date
              and (now() at time zone 'Asia/Kolkata')::time>=time '15:40')) as matured,
@@ -40,5 +41,11 @@ select count(*) as five_session_checkpoints,
        count(*) filter(where backlog_state='NONCANONICAL_OVERDUE_DIAGNOSTIC')
          as noncanonical_overdue_checkpoints,
        count(*) filter(where backlog_state='NOT_YET_DUE') as future_checkpoints,
-       count(*) filter(where backlog_state='OTHER_REVIEW') as other_review_checkpoints
+       count(*) filter(where backlog_state='OTHER_REVIEW') as other_review_checkpoints,
+       (select count(*) from public.v_build_3_25_edge_stock_population
+         where selected_benchmark and tracking_policy='LEGACY_PRE_V2')
+         as selected_legacy_nonfive_horizon_recommendations,
+       (select count(*) from public.v_build_3_25_edge_stock_population
+         where selected_benchmark and tracking_policy='EDGE_D5_V2')
+         as selected_v2_five_horizon_recommendations
 from public.v_build_3_25_edge_checkpoint_backlog;

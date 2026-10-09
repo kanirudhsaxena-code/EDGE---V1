@@ -47,4 +47,4 @@ select 'MDOS_BUILD_3_25_EDGE_CLEAN_ASSESSMENT_V1'::text as assessment_version,
          else 'REPORTABLE'
        end::text as reporting_status
   from public.v_build_3_25_edge_stock_population_summary summary
- cross join scored;
+ cross join scored s;

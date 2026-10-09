@@ -1,0 +1,60 @@
+name: Build 3.25 EDGE Stocks Data Audit
+
+on:
+  push:
+    branches:
+      - build-3.25-data-integrity-20261008
+    paths:
+      - 'scripts/build_3_25_data_audit.py'
+      - '.github/workflows/build-3-25-data-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-3-25-edge-stocks-data-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install read-only audit dependency
+        run: python -m pip install --disable-pip-version-check 'psycopg2-binary>=2.9,<3'
+      - name: Run Build 3.25 read-only EDGE Stocks audit
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          python scripts/build_3_25_data_audit.py > build-3-25-edge-stocks-data-audit.json
+      - name: Validate audit contract
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('build-3-25-edge-stocks-data-audit.json'))
+          assert d['version']=='MDOS_BUILD_3_25_EDGE_STOCK_DATA_AUDIT_V1', d
+          assert d['read_only'] is True, d
+          assert isinstance(d['records'],list), d
+          s=d['summary']
+          assert s['selected_matured'] >= s['official_scorable'] >= 0, s
+          print('BUILD_3_25_EDGE_STOCKS_AUDIT=PASS')
+          print('SELECTED_MATURED',s['selected_matured'])
+          print('OFFICIAL_SCORABLE',s['official_scorable'])
+          print('CLASSIFICATIONS',s['classification_counts'])
+          PY
+      - name: Emit bounded audit report
+        run: cat build-3-25-edge-stocks-data-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-3-25-edge-stocks-data-audit
+          path: build-3-25-edge-stocks-data-audit.json
+          retention-days: 30
+          if-no-files-found: error

@@ -28,7 +28,7 @@ jobs:
           {
             echo 'begin;'
             cat migrations/013_build_3_25_clean_efficacy_population.sql
-            echo "\\copy (select total_recommendations,selected_benchmark_count,official_scorable_count,provisional_open_count,repair_pending_count,audit_incomplete_count,all_run_diagnostic_count,nonofficial_other_count,coalesce(official_resolved_coverage_pct::text,'') from v_build_3_25_edge_stock_population_summary) to stdout with csv"
+            echo "\\copy (select total_recommendations,selected_benchmark_count,official_scorable_count,provisional_open_count,repair_pending_count,audit_incomplete_count,all_run_diagnostic_count,nonofficial_other_count,coalesce(official_resolved_coverage_pct::text,''),selected_complete_path_count,selected_audit_exclusion_count,coalesce(selected_path_completeness_pct::text,'') from v_build_3_25_edge_stock_population_summary) to stdout with csv"
             echo 'rollback;'
           } | docker run -i --rm postgres:17 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 > /tmp/tx.log
           grep -E '^[0-9]+,' /tmp/tx.log | tail -1 > /tmp/summary.csv
@@ -37,13 +37,18 @@ jobs:
         run: |
           python - <<'PY'
           line=open('/tmp/summary.csv').read().strip().split(',')
-          assert len(line)==9,line
-          total,selected,official,provisional,repair,audit,allrun,other,coverage=line
+          assert len(line)==12,line
+          total,selected,official,provisional,repair,audit,allrun,other,coverage,complete_path,selected_audit,path_pct=line
           total,selected,official,provisional,repair,audit,allrun,other=map(int,(total,selected,official,provisional,repair,audit,allrun,other))
           # No hard-coded production row counts: fail on omissions and classification drift.
           assert min(total,selected,official,provisional,repair,audit,allrun,other)>=0,line
           assert total == official+provisional+repair+audit+allrun+other,line
-          assert selected <= total and selected >= official+provisional+repair,line
+          complete_path,selected_audit=int(complete_path),int(selected_audit)
+          assert selected<=total and selected == official+provisional+repair+selected_audit,line
+          assert 0 <= complete_path <= selected,line
+          assert 0 <= selected_audit <= audit,line
+          path_expected=(100.0*complete_path/selected) if selected else None
+          assert (path_pct=='' and path_expected is None) or (path_expected is not None and abs(float(path_pct)-path_expected)<0.02),line
           expected=(100.0*official/(official+repair)) if official+repair else None
           assert (coverage=='' and expected is None) or (expected is not None and abs(float(coverage)-expected)<0.02),line
           print('total',total,'selected',selected,'official',official,'provisional',provisional,'repair',repair,'audit',audit,'allrun',allrun,'other',other)

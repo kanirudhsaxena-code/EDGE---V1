@@ -8,7 +8,6 @@ select oc.recommendation_id,
        oc.status as checkpoint_status,
        p.selected_benchmark,
        p.population_state as recommendation_population,
-       p.tracking_policy,
        (oc.due_date < (now() at time zone 'Asia/Kolkata')::date
          or (oc.due_date=(now() at time zone 'Asia/Kolkata')::date
              and (now() at time zone 'Asia/Kolkata')::time>=time '15:40')) as matured,
@@ -26,7 +25,8 @@ select oc.recommendation_id,
            then 'NONCANONICAL_OVERDUE_DIAGNOSTIC'
          when oc.status='DUE' then 'NOT_YET_DUE'
          else 'OTHER_REVIEW'
-       end as backlog_state
+       end as backlog_state,
+       p.tracking_policy
 from public.outcome_checkpoints oc
 join public.v_build_3_25_edge_stock_population p using(recommendation_id)
 where oc.checkpoint_type in ('D+1','D+2','D+3','D+4','D+5');

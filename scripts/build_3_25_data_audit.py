@@ -23,8 +23,14 @@ try:
             from recommendations r
             join edge_runs er on er.run_id=r.run_id
             left join edge_recommendation_governance g using(recommendation_id)
-            left join edge_canonical_selections s
-              on s.canonical_key=g.canonical_key
+            left join lateral (
+              select s.selection_status,s.selected_recommendation_id
+                from edge_canonical_selections s
+               where s.selected_recommendation_id=r.recommendation_id
+                 and s.selection_status='SELECTED'
+               order by s.selected_at desc nulls last
+               limit 1
+            ) s on true
             left join recommendation_lifecycle l using(recommendation_id)
             left join recommendation_performance p using(recommendation_id)
             left join (
@@ -67,8 +73,6 @@ for row in rows:
 
     if command_type=="TEST":
         classification="TEST_UAT"
-    elif candidate_type=="DIAGNOSTIC_SNAPSHOT":
-        classification="DIAGNOSTIC"
     elif selected:
         if not complete_path:
             classification="AUDIT_ONLY_INCOMPLETE"
@@ -80,6 +84,8 @@ for row in rows:
             classification="AUDIT_ONLY_INCOMPLETE"
         else:
             classification="REPAIR_PENDING"
+    elif candidate_type=="DIAGNOSTIC_SNAPSHOT":
+        classification="DIAGNOSTIC"
     elif candidate_type=="USER_CANONICAL_SNAPSHOT":
         classification="ALL_RUN_DIAGNOSTIC"
     elif candidate_type in ("LEGACY_CANDIDATE","PREOPEN_CANONICAL","OVERNIGHT_FALLBACK_CANONICAL","EXCEPTION_CANONICAL"):

@@ -32,13 +32,13 @@ base as (
 select *,
        case
          when command_type='TEST' then 'TEST_UAT'
-         when candidate_type='DIAGNOSTIC_SNAPSHOT' then 'DIAGNOSTIC'
-         when candidate_type='USER_CANONICAL_SNAPSHOT' then 'ALL_RUN_DIAGNOSTIC'
          when selected_benchmark and (path_count<>5 or path_labels<>'D,D+1,D+2,D+3,D+4') then 'AUDIT_ONLY_INCOMPLETE'
          when selected_benchmark and lifecycle_status='OPEN' then 'PROVISIONAL_OPEN_CALL'
          when selected_benchmark and lifecycle_status='CLOSED' and outcome_verdict in ('WIN','LOSS','FLAT') then 'OFFICIAL_SCORABLE'
          when selected_benchmark and lifecycle_status='CLOSED' and outcome_verdict='NOT_SCORABLE' then 'AUDIT_ONLY_INCOMPLETE'
          when selected_benchmark then 'REPAIR_PENDING'
+         when candidate_type='DIAGNOSTIC_SNAPSHOT' then 'DIAGNOSTIC'
+         when candidate_type='USER_CANONICAL_SNAPSHOT' then 'ALL_RUN_DIAGNOSTIC'
          when candidate_type in ('LEGACY_CANDIDATE','PREOPEN_CANONICAL','OVERNIGHT_FALLBACK_CANONICAL','EXCEPTION_CANONICAL') then 'NONCANONICAL'
          when candidate_type is null then 'AUDIT_ONLY_INCOMPLETE'
          else 'DIAGNOSTIC'
@@ -83,5 +83,14 @@ select
   round(
     100.0*count(*) filter (where population_state='OFFICIAL_SCORABLE')
     / nullif(count(*) filter (where population_state in ('OFFICIAL_SCORABLE','REPAIR_PENDING')),0),2
-  ) as official_resolved_coverage_pct
+  ) as official_resolved_coverage_pct,
+  count(*) filter (where selected_benchmark
+    and path_count=5 and path_labels='D,D+1,D+2,D+3,D+4') as selected_complete_path_count,
+  count(*) filter (where selected_benchmark and population_state='AUDIT_ONLY_INCOMPLETE')
+    as selected_audit_exclusion_count,
+  round(
+    100.0*count(*) filter (where selected_benchmark
+      and path_count=5 and path_labels='D,D+1,D+2,D+3,D+4')
+    / nullif(count(*) filter (where selected_benchmark),0),2
+  ) as selected_path_completeness_pct
 from public.v_build_3_25_edge_stock_population;

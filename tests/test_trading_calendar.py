@@ -63,7 +63,12 @@ class HolidayProvider:
     def __init__(self,payload):
         self.payload=payload
     def market_holidays(self):
-        return HolidayEnv(self.payload)
+        env=HolidayEnv(self.payload)
+        from datetime import datetime, timezone
+        env.received_at=datetime(2026,10,1,tzinfo=timezone.utc)
+        return env
+    def market_timings(self,day):
+        return HolidayEnv({"status":"success","data":[]})
 
 def test_is_nse_trading_day_skips_weekend_and_trading_holiday():
     from src.trading_calendar import is_nse_trading_day
